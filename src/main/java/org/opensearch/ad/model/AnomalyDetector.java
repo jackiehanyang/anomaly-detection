@@ -608,6 +608,10 @@ public class AnomalyDetector extends Config {
             customResultIndexTTL
         );
         detector.setDetectionDateRange(detectionDateRange);
+        System.out.println("here: ");
+        System.out.println(detector.customResultIndexMinAge);
+        System.out.println(detector.customResultIndexMinSize);
+        System.out.println(detector.customResultIndexTTL);
         return detector;
     }
 
