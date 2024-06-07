@@ -1088,7 +1088,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
             // schedule the next rollover for approx MAX_AGE later
             scheduledRollover = threadPool
-                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
+                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), TimeValue.timeValueMinutes(1), executorName());
         } catch (Exception e) {
             // This should be run on cluster startup
             logger.error("Error rollover result indices. " + "Can't rollover result until clusterManager node is restarted.", e);
@@ -1112,7 +1112,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
                 scheduledRollover.cancel();
             }
             scheduledRollover = threadPool
-                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
+                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), TimeValue.timeValueMinutes(1), executorName());
         }
     }
 
