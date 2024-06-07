@@ -1301,6 +1301,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
         // perform rollover and delete on AD custom result index alias
         if (config.getCustomResultIndexOrAlias().startsWith(ADCommonName.CUSTOM_RESULT_INDEX_PREFIX)) {
+            System.out.println("AD: " + config.getCustomResultIndexOrAlias());
             proceedWithRolloverAndDelete(
                 config.getCustomResultIndexOrAlias(),
                 rolloverRequest,
@@ -1312,6 +1313,8 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
         // perform rollover and delete on Forecasting custom result index alias
         if (config.getCustomResultIndexOrAlias().startsWith(CUSTOM_RESULT_INDEX_PREFIX)) {
+            System.out.println("Forecasting: " + config.getCustomResultIndexOrAlias());
+
             proceedWithRolloverAndDelete(
                 config.getCustomResultIndexOrAlias(),
                 rolloverRequest,
@@ -1349,6 +1352,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         IndexType resultIndex,
         Integer customResultIndexTtl
     ) {
+        System.out.println("proceedWithRolloverAndDelete_resultIndex: " + resultIndex);
         adminClient.indices().rolloverIndex(rollOverRequest, ActionListener.wrap(response -> {
             if (!response.isRolledOver()) {
                 logger.warn("{} not rolled over. Conditions were: {}", resultIndexAlias, response.getConditionStatus());
