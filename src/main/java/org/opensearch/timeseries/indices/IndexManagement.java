@@ -1084,7 +1084,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
     public void onClusterManager() {
         try {
             // try to rollover immediately as we might be restarting the cluster
-            rolloverAndDeleteHistoryIndex();
+            //rolloverAndDeleteHistoryIndex();
 
             // schedule the next rollover for approx MAX_AGE later
             scheduledRollover = threadPool
