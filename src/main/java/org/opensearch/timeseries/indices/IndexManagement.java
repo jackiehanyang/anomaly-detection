@@ -302,7 +302,10 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         adminClient.cluster().state(clusterStateRequest, ActionListener.wrap(clusterStateResponse -> {
             String latestToDelete = null;
             long latest = Long.MIN_VALUE;
+            System.out.println("ttl: " + customResultIndexTtl);
             long customTtlMillis = (customResultIndexTtl != null) ? customResultIndexTtl * 24 * 60 * 60 * 1000L : Long.MAX_VALUE;
+            System.out.println("customTtlMillis: " + customTtlMillis);
+
             for (IndexMetadata indexMetaData : clusterStateResponse.getState().metadata().indices().values()) {
                 long creationTime = indexMetaData.getCreationDate();
                 long indexAgeMillis = Instant.now().toEpochMilli() - creationTime;
@@ -1281,11 +1284,17 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
             getCustomResultIndexPattern(config.getCustomResultIndexOrAlias())
         );
 
+        System.out.println("result index name: " + config.getCustomResultIndexOrAlias());
+
         // add rollover conditions if found in config
         if (config.getCustomResultIndexMinAge() != null) {
+            System.out.println("index age condition: " + config.getCustomResultIndexMinAge());
+
             rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
         }
         if (config.getCustomResultIndexMinSize() != null) {
+            System.out.println("index size condition: " + config.getCustomResultIndexMinSize());
+
             rolloverRequest.addMaxIndexSizeCondition(new ByteSizeValue(config.getCustomResultIndexMinSize(), ByteSizeUnit.MB));
         }
 
