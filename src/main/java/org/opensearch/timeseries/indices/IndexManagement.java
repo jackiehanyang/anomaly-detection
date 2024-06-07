@@ -1084,7 +1084,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
     public void onClusterManager() {
         try {
             // try to rollover immediately as we might be restarting the cluster
-            //rolloverAndDeleteHistoryIndex();
+            rolloverAndDeleteHistoryIndex();
 
             // schedule the next rollover for approx MAX_AGE later
             scheduledRollover = threadPool
@@ -1269,7 +1269,13 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
             }
 
             // perform rollover and delete on found custom result index alias
-            candidateResultAliases.forEach(config -> handleCustomResultIndex(config));
+            //candidateResultAliases.forEach(config -> handleCustomResultIndex(config));
+            System.out.println("candidate size: " + candidateResultAliases.size());
+            for (Config config : candidateResultAliases) {
+                System.out.println("name: " + config.getName());
+                System.out.println("name: " + config.getCustomResultIndexOrAlias());
+                handleCustomResultIndex(config);
+            }
 
         }, e -> {
             logger.error("Failed to get configs with custom result index alias.", e);
@@ -1352,7 +1358,6 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         IndexType resultIndex,
         Integer customResultIndexTtl
     ) {
-        System.out.println("proceedWithRolloverAndDelete_resultIndex: " + resultIndex);
         adminClient.indices().rolloverIndex(rollOverRequest, ActionListener.wrap(response -> {
             if (!response.isRolledOver()) {
                 logger.warn("{} not rolled over. Conditions were: {}", resultIndexAlias, response.getConditionStatus());
