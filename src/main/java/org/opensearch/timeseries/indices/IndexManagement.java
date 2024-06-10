@@ -137,7 +137,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
     private String resultMapping;
     private NamedXContentRegistry xContentRegistry;
     protected BiCheckedFunction<XContentParser, String, ? extends Config, IOException> configParser;
-    protected String customResultIndexRegex;
+    protected String customResultIndexPrefix;
 
     protected class IndexState {
         // keep track of whether the mapping version is up-to-date
@@ -169,7 +169,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         String resultMapping,
         NamedXContentRegistry xContentRegistry,
         BiCheckedFunction<XContentParser, String, ? extends Config, IOException> configParser,
-        String customResultIndexRegex
+        String customResultIndexPrefix
     )
         throws IOException {
         this.client = client;
@@ -193,7 +193,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         this.resultMapping = resultMapping;
         this.xContentRegistry = xContentRegistry;
         this.configParser = configParser;
-        this.customResultIndexRegex = customResultIndexRegex;
+        this.customResultIndexPrefix = customResultIndexPrefix;
     }
 
     /**
@@ -794,7 +794,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         }
         BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
         BoolQueryBuilder shouldQueries = new BoolQueryBuilder();
-        shouldQueries.should(QueryBuilders.wildcardQuery(Config.RESULT_INDEX_FIELD, customResultIndexRegex));
+        shouldQueries.should(QueryBuilders.wildcardQuery(Config.RESULT_INDEX_FIELD, customResultIndexPrefix + "*"));
         if (shouldQueries.should().isEmpty() == false) {
             boolQuery.filter(shouldQueries);
         }
@@ -1079,10 +1079,12 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         try {
             // try to rollover immediately as we might be restarting the cluster
             rolloverAndDeleteHistoryIndex();
+            scheduledRollover = threadPool
+                    .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), TimeValue.timeValueMinutes(1), executorName());
 
             // schedule the next rollover for approx MAX_AGE later
-            scheduledRollover = threadPool
-                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
+//            scheduledRollover = threadPool
+//                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
         } catch (Exception e) {
             // This should be run on cluster startup
             logger.error("Error rollover result indices. " + "Can't rollover result until clusterManager node is restarted.", e);
@@ -1266,7 +1268,9 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
         // add rollover conditions if found in config
         if (config.getCustomResultIndexMinAge() != null) {
-            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
+            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueMinutes(1));
+
+//            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
         }
         if (config.getCustomResultIndexMinSize() != null) {
             rolloverRequest.addMaxIndexSizeCondition(new ByteSizeValue(config.getCustomResultIndexMinSize(), ByteSizeUnit.MB));
@@ -1308,6 +1312,9 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         IndexType resultIndex,
         Integer customResultIndexTtl
     ) {
+        if (rollOverRequest.getConditions().size() == 0) {
+            return;
+        }
         adminClient.indices().rolloverIndex(rollOverRequest, ActionListener.wrap(response -> {
             if (!response.isRolledOver()) {
                 logger.warn("{} not rolled over. Conditions were: {}", resultIndexAlias, response.getConditionStatus());
@@ -1315,12 +1322,10 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
                 IndexState indexState = indexStates.computeIfAbsent(resultIndex, k -> new IndexState(k.getMapping()));
                 indexState.mappingUpToDate = true;
                 logger.info("{} rolled over. Conditions were: {}", resultIndexAlias, response.getConditionStatus());
-                if (resultIndexAlias.startsWith(ADCommonName.CUSTOM_RESULT_INDEX_PREFIX)
-                    || resultIndexAlias.startsWith(CUSTOM_RESULT_INDEX_PREFIX)) {
+                if (resultIndexAlias.startsWith(customResultIndexPrefix)) {
                     // handle custom result index deletion
                     if (customResultIndexTtl != null) {
                         deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueHours(customResultIndexTtl * 24));
-
                     }
                 } else {
                     // handle default result index deletion
