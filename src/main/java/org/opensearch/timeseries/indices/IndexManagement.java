@@ -1080,6 +1080,8 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
             // schedule the next rollover for approx MAX_AGE later
             scheduledRollover = threadPool
                 .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
+            scheduledRollover = threadPool
+                    .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), TimeValue.timeValueMinutes(1), executorName());
         } catch (Exception e) {
             // This should be run on cluster startup
             logger.error("Error rollover result indices. " + "Can't rollover result until clusterManager node is restarted.", e);
@@ -1263,9 +1265,14 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
         // add rollover conditions if found in config
         if (config.getCustomResultIndexMinAge() != null) {
-            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
+            System.out.println("min age: " + config.getCustomResultIndexMinAge());
+//            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
+
+            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueMinutes(1));
         }
         if (config.getCustomResultIndexMinSize() != null) {
+            System.out.println("min size: " + config.getCustomResultIndexMinSize());
+
             rolloverRequest.addMaxIndexSizeCondition(new ByteSizeValue(config.getCustomResultIndexMinSize(), ByteSizeUnit.MB));
         }
 
@@ -1293,7 +1300,11 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         CreateIndexRequest createRequest = rollOverRequest.getCreateIndexRequest();
 
         createRequest.index(rolloverIndexPattern).mapping(resultMapping, XContentType.JSON);
-        choosePrimaryShards(createRequest, true);
+        if (resultIndexAlias.startsWith(customResultIndexPrefix)) {
+            choosePrimaryShards(createRequest, false);
+        } else {
+            choosePrimaryShards(createRequest, true);
+        }
 
         return rollOverRequest;
     }
