@@ -1314,7 +1314,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         IndexType resultIndex,
         Integer customResultIndexTtl
     ) {
-        if (rollOverRequest.getConditions().size() == 0) {
+        if (rollOverRequest.getConditions().size() == 0 && customResultIndexTtl == null) {
             return;
         }
         adminClient.indices().rolloverIndex(rollOverRequest, ActionListener.wrap(response -> {
@@ -1326,11 +1326,8 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
                 logger.info("{} rolled over. Conditions were: {}", resultIndexAlias, response.getConditionStatus());
                 if (resultIndexAlias.startsWith(customResultIndexPrefix)) {
                     // handle custom result index deletion
-                    if (customResultIndexTtl != null) {
 //                        deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueHours(customResultIndexTtl * 24));
-                        deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueMinutes(1));
-
-                    }
+                    deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueMinutes(1));
                 } else {
                     // handle default result index deletion
                     deleteOldHistoryIndices(allResultIndicesPattern, historyRetentionPeriod);
