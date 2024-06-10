@@ -1266,9 +1266,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         // add rollover conditions if found in config
         if (config.getCustomResultIndexMinAge() != null) {
             System.out.println("min age: " + config.getCustomResultIndexMinAge());
-//            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
-
-            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueMinutes(1));
+            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
         }
         if (config.getCustomResultIndexMinSize() != null) {
             System.out.println("min size: " + config.getCustomResultIndexMinSize());
@@ -1329,7 +1327,9 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
                 if (resultIndexAlias.startsWith(customResultIndexPrefix)) {
                     // handle custom result index deletion
                     if (customResultIndexTtl != null) {
-                        deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueHours(customResultIndexTtl * 24));
+//                        deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueHours(customResultIndexTtl * 24));
+                        deleteOldHistoryIndices(allResultIndicesPattern, TimeValue.timeValueMinutes(1));
+
                     }
                 } else {
                     // handle default result index deletion
