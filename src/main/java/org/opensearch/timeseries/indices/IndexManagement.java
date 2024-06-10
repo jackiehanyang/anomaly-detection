@@ -1277,7 +1277,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
         // add rollover conditions if found in config
         if (config.getCustomResultIndexMinAge() != null) {
-            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueMinutes(1)));
+            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueMinutes(1));
 
 //            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
         }
