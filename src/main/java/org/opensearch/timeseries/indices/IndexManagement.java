@@ -1240,6 +1240,8 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         String rolloverIndexPattern,
         IndexType resultIndex
     ) {
+        System.out.println("calling resultIndexAlias: " + resultIndexAlias);
+
         // rollover and delete default result index
         if (doesDefaultResultIndexExist()) {
             RolloverRequest defaultResultIndexRolloverRequest = buildRolloverRequest(resultIndexAlias, rolloverIndexPattern);

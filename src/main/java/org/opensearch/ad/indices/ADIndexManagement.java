@@ -233,6 +233,7 @@ public class ADIndexManagement extends IndexManagement<ADIndex> {
 
     @Override
     protected void rolloverAndDeleteHistoryIndex() {
+        System.out.println("here in AD");
         rolloverAndDeleteHistoryIndex(
             ADCommonName.ANOMALY_RESULT_INDEX_ALIAS,
             ALL_AD_RESULTS_INDEX_PATTERN,
