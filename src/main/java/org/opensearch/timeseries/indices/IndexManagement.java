@@ -1081,8 +1081,10 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
             rolloverAndDeleteHistoryIndex();
 
             // schedule the next rollover for approx MAX_AGE later
+//            scheduledRollover = threadPool
+//                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
             scheduledRollover = threadPool
-                .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), historyRolloverPeriod, executorName());
+                    .scheduleWithFixedDelay(() -> rolloverAndDeleteHistoryIndex(), TimeValue.timeValueMinutes(1), executorName());
         } catch (Exception e) {
             // This should be run on cluster startup
             logger.error("Error rollover result indices. " + "Can't rollover result until clusterManager node is restarted.", e);
@@ -1275,7 +1277,9 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
 
         // add rollover conditions if found in config
         if (config.getCustomResultIndexMinAge() != null) {
-            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
+            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueMinutes(1)));
+
+//            rolloverRequest.addMaxIndexAgeCondition(TimeValue.timeValueDays(config.getCustomResultIndexMinAge()));
         }
         if (config.getCustomResultIndexMinSize() != null) {
             rolloverRequest.addMaxIndexSizeCondition(new ByteSizeValue(config.getCustomResultIndexMinSize(), ByteSizeUnit.MB));
