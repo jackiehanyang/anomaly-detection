@@ -23,6 +23,7 @@ import java.util.Locale;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.action.ingest.PutPipelineRequest;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.ad.constant.ADCommonMessages;
 import org.opensearch.ad.model.AnomalyDetector;
@@ -33,8 +34,10 @@ import org.opensearch.ad.transport.IndexAnomalyDetectorResponse;
 import org.opensearch.client.node.NodeClient;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.rest.BytesRestResponse;
@@ -103,6 +106,10 @@ public class RestIndexAnomalyDetectorAction extends AbstractAnomalyDetectorActio
             maxCategoricalFields
         );
 
+        if (method == RestRequest.Method.POST && detector.getFlattenResultIndexMapping()) {
+            createIngestPipeline(client, detector.getCustomResultIndexPattern());
+        }
+
         return channel -> client
             .execute(IndexAnomalyDetectorAction.INSTANCE, indexAnomalyDetectorRequest, indexAnomalyDetectorResponse(channel, method));
     }
@@ -155,5 +162,16 @@ public class RestIndexAnomalyDetectorAction extends AbstractAnomalyDetectorActio
                 return bytesRestResponse;
             }
         };
+    }
+
+    private void createIngestPipeline(NodeClient client, String customResultIndexPattern) {
+        try {
+            XContentBuilder pipelineBuilder = XContentFactory.jsonBuilder();
+            pipelineBuilder.startObject();
+            pipelineBuilder.field("description", "Ingest pipeline with script processor to help flattening nested result index");
+            PutPipelineRequest putPipelineRequest = new PutPipelineRequest("name", pipelineBuilder);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
