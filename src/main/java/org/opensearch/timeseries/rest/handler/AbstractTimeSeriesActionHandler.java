@@ -25,14 +25,18 @@ import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsAction;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsRequest;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsResponse;
+import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.get.GetResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
+import org.opensearch.action.ingest.DeletePipelineRequest;
+import org.opensearch.action.ingest.PutPipelineRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.action.support.replication.ReplicationResponse;
 import org.opensearch.client.Client;
 import org.opensearch.cluster.service.ClusterService;
@@ -40,11 +44,14 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentFactory;
+import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.ActionResponse;
+import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
@@ -145,6 +152,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
     protected final Clock clock;
     protected final Settings settings;
     protected final ValidationAspect configValidationAspect;
+    protected boolean breakingUIChange;
 
     public AbstractTimeSeriesActionHandler(
         Config config,
@@ -203,6 +211,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         this.settings = settings;
         this.handler = new ConfigUpdateConfirmer<>(taskManager, transportService);
         this.configValidationAspect = configValidationAspect;
+        this.breakingUIChange = false;
     }
 
     /**
@@ -407,11 +416,150 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                     client,
                     id,
                     listener,
-                    () -> updateConfig(id, indexingDryRun, listener),
+                    () -> {
+                        handleFlattenResultIndexMappingUpdate(config.getFlattenResultIndexMapping(), listener);
+                        updateConfig(id, indexingDryRun, listener);
+                    },
                     xContentRegistry
                 );
         } else {
             createConfig(indexingDryRun, listener);
+            System.out.println("flatten: " + config.getFlattenResultIndexMapping());
+            if (!indexingDryRun && config.getFlattenResultIndexMapping()) {
+                setupIngestPipeline(config.getCustomResultIndexOrAlias(), listener);
+            }
+        }
+    }
+
+    private void setupIngestPipeline(String resultIndexOrAlias, ActionListener<T> listener) {
+        String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getName();
+
+        try {
+            XContentBuilder pipelineBuilder = XContentFactory.jsonBuilder();
+            pipelineBuilder.startObject();
+            {
+                pipelineBuilder.field("description", "Ingest pipeline for anomaly detector with result index: " + resultIndexOrAlias);
+                pipelineBuilder.startArray("processors");
+                {
+                    pipelineBuilder.startObject();
+                    {
+                        pipelineBuilder.startObject("script");
+                        {
+                            pipelineBuilder.field("lang", "painless");
+                            pipelineBuilder.field("source", """
+                            if (ctx._source.containsKey('feature_data')) {
+                              for (int i = 0; i < ctx._source.feature_data.length; i++) {
+                                def feature = ctx._source.feature_data[i];
+                                ctx._source['feature_data_' + feature.feature_name] = feature.data;
+                              }
+                            }
+                            """);
+                        }
+                        pipelineBuilder.endObject();
+                    }
+                    pipelineBuilder.endObject();
+                }
+                pipelineBuilder.endArray();
+            }
+            pipelineBuilder.endObject();
+
+            BytesReference pipelineSource = BytesReference.bytes(pipelineBuilder);
+
+            PutPipelineRequest putPipelineRequest = new PutPipelineRequest(pipelineId, pipelineSource, XContentType.JSON);
+
+            client.admin().cluster().putPipeline(putPipelineRequest, new ActionListener<>() {
+                @Override
+                public void onResponse(AcknowledgedResponse response) {
+                    if (response.isAcknowledged()) {
+                        try {
+                            // update index     setting
+                            updateResultIndexSetting(pipelineId);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        logger.info("Ingest pipeline created successfully for pipelineId: {}", pipelineId);
+                    } else {
+                        logger.error("Failed to create ingest pipeline for pipelineId: {}", pipelineId);
+                        listener.onFailure(new OpenSearchStatusException(
+                                "Ingest pipeline creation was not acknowledged for pipelineId: " + pipelineId, RestStatus.INTERNAL_SERVER_ERROR
+                        ));
+                    }
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    logger.error("Error while creating ingest pipeline for pipelineId: {}", pipelineId, e);
+                    listener.onFailure(e);
+                }
+            });
+        } catch (IOException e) {
+            logger.error("Exception while building ingest pipeline definition for pipeline ID: {}", pipelineId, e);
+            listener.onFailure(e);
+        }
+    }
+
+    private void updateResultIndexSetting(String pipelineId) throws IOException {
+        UpdateSettingsRequest updateSettingsRequest = new UpdateSettingsRequest();
+        updateSettingsRequest.indices(config.getCustomResultIndexOrAlias());
+
+        Settings.Builder settingsBuilder = Settings.builder();
+        settingsBuilder.put("index.default_pipeline", pipelineId);
+
+        updateSettingsRequest.settings(settingsBuilder);
+
+        client.admin().indices().updateSettings(updateSettingsRequest, new ActionListener<AcknowledgedResponse>() {
+            @Override
+            public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                if (acknowledgedResponse.isAcknowledged()) {
+                    logger.info("Custom result index settings updated successfully for index or alias: {} " +
+                            "with default ingest pipeline: {}", config.getCustomResultIndexOrAlias(), pipelineId);
+                } else {
+                    logger.warn("Failed to update custom result index settings for index or alias: {}", config.getCustomResultIndexOrAlias());
+                }
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                logger.error("Error while updating custom result index settings for index or alias: {}", config.getCustomResultIndexOrAlias());
+            }
+        });
+    }
+
+    private void handleFlattenResultIndexMappingUpdate(boolean flattenResultIndexMapping, ActionListener<T> listener) {
+        if (flattenResultIndexMapping) {
+            // if field value is true, create the pipeline. No need to get and compare with previous value
+            setupIngestPipeline(config.getCustomResultIndexOrAlias(), listener);
+        } else {
+            String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getId();
+            client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
+
+                @Override
+                public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                    if (acknowledgedResponse.isAcknowledged()) {
+                        logger.info("Ingest pipeline deleted successfully for pipelineId: {}", pipelineId);
+                    } else {
+                        logger.error("Failed to delete ingest pipeline for pipelineId: {}", pipelineId);
+                        listener.onFailure(new OpenSearchStatusException(
+                                "Ingest pipeline deletion was not acknowledged for pipelineId: " + pipelineId, RestStatus.INTERNAL_SERVER_ERROR
+                        ));
+                    }
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    if (e instanceof OpenSearchStatusException && ((OpenSearchStatusException) e).status() == RestStatus.NOT_FOUND) {
+                        // as we're not getting and comparing with previous value before deleting the pipeline, it could throw 404 error
+                        // ignore the 404 error and log it
+                        logger.info("Ingest pipeline [{}] not found, skipping deletion.", pipelineId);
+                        // continue with success response
+                        listener.onResponse(null);
+                    } else {
+                        // Handle errors other than 404
+                        logger.error("Error while deleting ingest pipeline for pipelineId: {}", pipelineId, e);
+                        listener.onFailure(e);
+                    }
+                }
+            });
         }
     }
 
@@ -455,6 +603,11 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                             new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_CUSTOM_RESULT_INDEX, RestStatus.BAD_REQUEST)
                         );
                     return;
+                }
+            } else {
+                if (!ParseUtils.listEqualsWithoutConsideringOrder(existingConfig.getCategoryFields(), config.getCategoryFields())
+                    || !Objects.equals(existingConfig.getCustomResultIndexOrAlias(), config.getCustomResultIndexOrAlias())) {
+                    breakingUIChange = true;
                 }
             }
 
@@ -675,7 +828,6 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             );
     }
 
-    @SuppressWarnings("unchecked")
     protected void searchConfigInputIndices(String configId, boolean indexingDryRun, ActionListener<T> listener) {
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
             .query(QueryBuilders.matchAllQuery())

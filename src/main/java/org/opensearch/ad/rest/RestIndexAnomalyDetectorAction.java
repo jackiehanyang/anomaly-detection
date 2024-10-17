@@ -23,7 +23,9 @@ import java.util.Locale;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.action.ingest.PutPipelineRequest;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.ad.constant.ADCommonMessages;
 import org.opensearch.ad.model.AnomalyDetector;
 import org.opensearch.ad.settings.ADEnabledSetting;
@@ -33,8 +35,13 @@ import org.opensearch.ad.transport.IndexAnomalyDetectorResponse;
 import org.opensearch.client.node.NodeClient;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.xcontent.XContentFactory;
+import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.rest.BytesRestResponse;
@@ -83,6 +90,11 @@ public class RestIndexAnomalyDetectorAction extends AbstractAnomalyDetectorActio
             ? WriteRequest.RefreshPolicy.parse(request.param(REFRESH))
             : WriteRequest.RefreshPolicy.IMMEDIATE;
         RestRequest.Method method = request.getHttpRequest().method();
+
+        if (method == RestRequest.Method.POST && detectorId != AnomalyDetector.NO_ID) {
+            // reset detector to empty string detectorId is only meant for updating detector
+            detectorId = AnomalyDetector.NO_ID;
+        }
 
         IndexAnomalyDetectorRequest indexAnomalyDetectorRequest = new IndexAnomalyDetectorRequest(
             detectorId,
