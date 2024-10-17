@@ -424,7 +424,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 );
         } else {
             createConfig(indexingDryRun, listener);
-            System.out.println("flatten: " + config.getFlattenResultIndexMapping());
+            System.out.println("flatten: " + config.getCustomResultIndexMinAge());
             if (!indexingDryRun && config.getFlattenResultIndexMapping()) {
                 setupIngestPipeline(config.getCustomResultIndexOrAlias(), listener);
             }
