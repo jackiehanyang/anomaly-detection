@@ -453,7 +453,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                                     for (int i = 0; i < ctx.feature_data.length; i++) {
                                         def feature = ctx.feature_data[i];
                                         if (feature != null && feature.containsKey('feature_name') && feature.containsKey('data')) {
-                                            ctx.['feature_data_' + feature.feature_name] = feature.data;
+                                            ctx['feature_data_' + feature.feature_name] = feature.data;
                                         }
                                     }
                                 }
