@@ -449,11 +449,11 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         {
                             pipelineBuilder.field("lang", "painless");
                             pipelineBuilder.field("source", """
-                                if (ctx._source.containsKey('feature_data') && ctx._source.feature_data != null) {
-                                    for (int i = 0; i < ctx._source.feature_data.length; i++) {
-                                        def feature = ctx._source.feature_data[i];
+                                if (ctx.containsKey('feature_data') && ctx.feature_data != null) {
+                                    for (int i = 0; i < ctx.feature_data.length; i++) {
+                                        def feature = ctx.feature_data[i];
                                         if (feature != null && feature.containsKey('feature_name') && feature.containsKey('data')) {
-                                            ctx._source['feature_data_' + feature.feature_name] = feature.data;
+                                            ctx.['feature_data_' + feature.feature_name] = feature.data;
                                         }
                                     }
                                 }
