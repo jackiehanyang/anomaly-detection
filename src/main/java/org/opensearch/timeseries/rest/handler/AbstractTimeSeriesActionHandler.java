@@ -8,6 +8,7 @@ package org.opensearch.timeseries.rest.handler;
 import static org.opensearch.core.xcontent.XContentParserUtils.ensureExpectedToken;
 import static org.opensearch.timeseries.constant.CommonMessages.CATEGORICAL_FIELD_TYPE_ERR_MSG;
 import static org.opensearch.timeseries.constant.CommonMessages.TIMESTAMP_VALIDATION_FAILED;
+import static org.opensearch.timeseries.indices.IndexManagement.getScripts;
 import static org.opensearch.timeseries.util.ParseUtils.parseAggregators;
 import static org.opensearch.timeseries.util.RestHandlerUtils.XCONTENT_WITH_TYPE;
 import static org.opensearch.timeseries.util.RestHandlerUtils.isExceptionCausedByInvalidQuery;
@@ -74,6 +75,7 @@ import org.opensearch.timeseries.model.TaskType;
 import org.opensearch.timeseries.model.TimeSeriesTask;
 import org.opensearch.timeseries.model.ValidationAspect;
 import org.opensearch.timeseries.model.ValidationIssueType;
+import org.opensearch.timeseries.settings.TimeSeriesSettings;
 import org.opensearch.timeseries.task.TaskCacheManager;
 import org.opensearch.timeseries.task.TaskManager;
 import org.opensearch.timeseries.util.*;
@@ -448,16 +450,8 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         pipelineBuilder.startObject("script");
                         {
                             pipelineBuilder.field("lang", "painless");
-                            pipelineBuilder.field("source", """
-                                if (ctx.containsKey('feature_data') && ctx.feature_data != null) {
-                                    for (int i = 0; i < ctx.feature_data.length; i++) {
-                                        def feature = ctx.feature_data[i];
-                                        if (feature != null && feature.containsKey('feature_name') && feature.containsKey('data')) {
-                                            ctx['feature_data_' + feature.feature_name] = feature.data;
-                                        }
-                                    }
-                                }
-                            """);
+                            String flattenScript = getScripts(TimeSeriesSettings.FLATTEN_CUSTOM_RESULT_INDEX_PAINLESS);
+                            pipelineBuilder.field("source", flattenScript);
                         }
                         pipelineBuilder.endObject();
                     }

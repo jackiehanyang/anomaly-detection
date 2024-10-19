@@ -271,6 +271,11 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         return Resources.toString(url, Charsets.UTF_8);
     }
 
+    public static String getScripts(String scriptFileRelativePath) throws IOException {
+        URL url = IndexManagement.class.getClassLoader().getResource(scriptFileRelativePath);
+        return Resources.toString(url, Charsets.UTF_8);
+    }
+
     protected void choosePrimaryShards(CreateIndexRequest request, boolean hiddenIndex) {
         request
             .settings(

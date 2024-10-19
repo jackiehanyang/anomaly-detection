@@ -1,0 +1,54 @@
+// Flatten feature_data
+if (ctx.containsKey('feature_data') && ctx.feature_data != null) {
+    for (int i = 0; i < ctx.feature_data.length; i++) {
+        def feature = ctx.feature_data[i];
+        if (feature != null && feature.containsKey('feature_name') && feature.containsKey('data')) {
+            ctx['feature_data_' + feature.feature_name] = feature.data;
+        }
+    }
+}
+
+// Flatten entity
+if (ctx.containsKey('entity') && ctx.entity != null) {
+    for (int i = 0; i < ctx.entity.length; i++) {
+        def entity = ctx.entity[i];
+        if (entity != null && entity.containsKey('name') && entity.containsKey('value')) {
+            ctx['entity_' + entity.name] = entity.value;
+        }
+    }
+}
+
+// Flatten relevant_attribution
+if (ctx.containsKey('relevant_attribution') && ctx.relevant_attribution != null) {
+    for (int i = 0; i < ctx.relevant_attribution.length; i++) {
+        def attribution = ctx.relevant_attribution[i];
+        if (attribution != null && attribution.containsKey('feature_id') && attribution.containsKey('data')) {
+            ctx['relevant_attribution_' + attribution.feature_id] = attribution.data;
+        }
+    }
+}
+
+// Flatten expected_values
+if (ctx.containsKey('expected_values') && ctx.expected_values != null) {
+    for (int i = 0; i < ctx.expected_values.length; i++) {
+        def expected = ctx.expected_values[i];
+        if (expected != null && expected.containsKey('value_list') && expected.value_list != null) {
+            for (int j = 0; j < expected.value_list.length; j++) {
+                def value = expected.value_list[j];
+                if (value != null && value.containsKey('feature_id') && value.containsKey('data')) {
+                    ctx['expected_values_' + value.feature_id] = value.data;
+                }
+            }
+        }
+    }
+}
+
+// Flatten past_values
+if (ctx.containsKey('past_values') && ctx.past_values != null) {
+    for (int i = 0; i < ctx.past_values.length; i++) {
+        def pastValue = ctx.past_values[i];
+        if (pastValue != null && pastValue.containsKey('feature_id') && pastValue.containsKey('data')) {
+            ctx['past_value_' + pastValue.feature_id] = pastValue.data;
+        }
+    }
+}
