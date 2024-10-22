@@ -401,6 +401,44 @@ public class TestHelpers {
         );
     }
 
+    public static AnomalyDetector randomDetectorWithFlattenedResultIndex(String resultIndex, Boolean flattenResultIndex) throws IOException {
+        Feature feature = randomFeature();
+        List<Feature> featureList = ImmutableList.of(feature);
+
+        return new AnomalyDetector(
+                randomAlphaOfLength(10),
+                randomLong(),
+                randomAlphaOfLength(20),
+                randomAlphaOfLength(30),
+                randomAlphaOfLength(5),
+                ImmutableList.of(randomAlphaOfLength(10)),
+                featureList,
+                randomQuery("{\"bool\":{\"filter\":[{\"exists\":{\"field\":\"value\"}}]}}"),
+                new IntervalTimeConfiguration(OpenSearchRestTestCase.randomLongBetween(1, 5), ChronoUnit.MINUTES),
+                new IntervalTimeConfiguration(OpenSearchRestTestCase.randomLongBetween(1, 5), ChronoUnit.MINUTES),
+                8,
+                null,
+                randomInt(),
+                Instant.now(),
+                ImmutableList.of(randomAlphaOfLength(5)),
+                null,
+                resultIndex,
+                TestHelpers.randomImputationOption(featureList),
+                // timeDecay (reverse of recencyEmphasis) should be less than 1.
+                // so we start with 2.
+                randomIntBetween(2, 10000),
+                randomInt(TimeSeriesSettings.MAX_SHINGLE_SIZE / 2),
+                randomIntBetween(1, 1000),
+                null,
+                null,
+                null,
+                null,
+                true,
+                Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        );
+    }
+
+
     public static DateRange randomDetectionDateRange() {
         return new DateRange(
             Instant.now().truncatedTo(ChronoUnit.SECONDS).minus(10, ChronoUnit.DAYS),
@@ -463,7 +501,7 @@ public class TestHelpers {
             null,
             null,
             null,
-            null,
+            false,
             Instant.now()
         );
     }

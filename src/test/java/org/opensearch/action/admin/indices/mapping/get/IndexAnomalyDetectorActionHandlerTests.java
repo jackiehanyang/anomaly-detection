@@ -12,6 +12,7 @@
 package org.opensearch.action.admin.indices.mapping.get;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -33,16 +34,22 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
+import org.mockito.Mock;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionType;
 import org.opensearch.action.get.GetAction;
 import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.get.GetResponse;
+import org.opensearch.action.ingest.PutPipelineRequest;
 import org.opensearch.action.search.SearchAction;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.action.support.master.AcknowledgedResponse;
+import org.opensearch.ad.indices.ADIndex;
 import org.opensearch.ad.indices.ADIndexManagement;
 import org.opensearch.ad.model.AnomalyDetector;
 import org.opensearch.ad.rest.handler.IndexAnomalyDetectorActionHandler;
@@ -66,6 +73,9 @@ import org.opensearch.timeseries.common.exception.ValidationException;
 import org.opensearch.timeseries.constant.CommonMessages;
 import org.opensearch.timeseries.constant.CommonName;
 import org.opensearch.timeseries.feature.SearchFeatureDao;
+import org.opensearch.timeseries.function.ExecutorFunction;
+import org.opensearch.timeseries.indices.IndexManagement;
+import org.opensearch.timeseries.indices.TimeSeriesIndex;
 import org.opensearch.timeseries.util.SecurityClientUtil;
 import org.opensearch.transport.TransportService;
 
@@ -913,4 +923,112 @@ public class IndexAnomalyDetectorActionHandlerTests extends AbstractTimeSeriesTe
         verify(clientSpy, times(1)).execute(eq(GetFieldMappingsAction.INSTANCE), any(), any());
         verify(clientSpy, times(1)).execute(eq(GetAction.INSTANCE), any(), any());
     }
+
+    public void testSetupIngestPipelineCalledWhenFlattenResultIndexMappingTrue() throws Exception {
+        AnomalyDetector detector = TestHelpers.randomDetectorWithFlattenedResultIndex("opensearch-ad-plugin-result-t1", true);
+
+        // Step 1: Create the mock of timeSeriesIndices
+        IndexManagement<ADIndex> timeSeriesIndicesMock = mock(IndexManagement.class);
+
+        doAnswer(new Answer<Void>() {
+            @Override
+            public Void answer(InvocationOnMock invocation) {
+                ExecutorFunction lambda = invocation.getArgument(1);
+                System.out.println("Lambda captured, about to execute");
+                lambda.execute();  // Check if the lambda is executed
+                return null;
+            }
+        }).when(timeSeriesIndicesMock).initCustomResultIndexAndExecute(anyString(), any(ExecutorFunction.class), any(ActionListener.class));
+        // Step 3: Inject the mock into the handler when instantiating it
+        handler = new IndexAnomalyDetectorActionHandler(
+                clusterService,
+                clientMock,
+                clientUtil,
+                transportService,
+                anomalyDetectionIndices,
+                detectorId,
+                seqNo,
+                primaryTerm,
+                refreshPolicy,
+                detector,
+                requestTimeout,
+                maxSingleEntityAnomalyDetectors,
+                maxMultiEntityAnomalyDetectors,
+                maxAnomalyFeatures,
+                maxCategoricalFields,
+                method,
+                xContentRegistry(),
+                null,
+                adTaskManager,
+                searchFeatureDao,
+                Settings.EMPTY
+        );
+
+        final CountDownLatch inProgressLatch = new CountDownLatch(1);
+        handler.start(ActionListener.wrap(r -> {
+            assertTrue("should throw error", false);
+            inProgressLatch.countDown();
+        }, e -> {
+            String error = String.format(Locale.ROOT, CommonMessages.CATEGORICAL_FIELD_TYPE_ERR_MSG, "a");
+            assertTrue("actual: " + e.getMessage(), e.getMessage().contains(error));
+            inProgressLatch.countDown();
+        }));
+    }
+
+    public void testCreateOrUpdateConfigCalled() throws Exception {
+        // Step 1: Create a mock of the IndexManagement<ADIndex> class
+        IndexManagement<ADIndex> timeSeriesIndicesMock = mock(IndexManagement.class);
+
+        // Step 2: Stub initCustomResultIndexAndExecute to directly invoke the lambda (ExecutorFunction)
+        doAnswer(new Answer<Void>() {
+            @Override
+            public Void answer(InvocationOnMock invocation) {
+                // Capture the lambda (ExecutorFunction)
+                ExecutorFunction function = invocation.getArgument(1);
+
+                // Directly execute the lambda, which should call createOrUpdateConfig
+                function.execute();  // This should trigger createOrUpdateConfig
+
+                return null;
+            }
+        }).when(timeSeriesIndicesMock).initCustomResultIndexAndExecute(anyString(), any(ExecutorFunction.class), any(ActionListener.class));
+
+        // Step 3: Inject the mock into the handler during instantiation
+        handler = new IndexAnomalyDetectorActionHandler(
+                clusterService,
+                clientMock,
+                clientUtil,
+                transportService,
+                anomalyDetectionIndices,
+                detectorId,
+                seqNo,
+                primaryTerm,
+                refreshPolicy,
+                detector,
+                requestTimeout,
+                maxSingleEntityAnomalyDetectors,
+                maxMultiEntityAnomalyDetectors,
+                maxAnomalyFeatures,
+                maxCategoricalFields,
+                method,
+                xContentRegistry(),
+                null,
+                adTaskManager,
+                searchFeatureDao,
+                Settings.EMPTY
+        );
+
+        // Step 4: Invoke the method that should trigger initCustomResultIndexAndExecute
+        handler.start(ActionListener.wrap(r -> {
+            assertTrue("Test failed: should not reach success block", false);
+        }, e -> {
+            assertTrue("Test passed: should reach error block due to categorical field type",
+                    e.getMessage().contains(CommonMessages.CATEGORICAL_FIELD_TYPE_ERR_MSG));
+        }));
+
+        // You can also verify that createOrUpdateConfig was actually called
+        verify(handler, times(1)).createOrUpdateConfig(any(ActionListener.class));
+    }
+
+
 }

@@ -389,6 +389,7 @@ public class IndexForecasterActionHandlerTests extends AbstractForecasterActionH
             .setTimeField("timestamp")
             .setIndices(ImmutableList.of("test-index"))
             .setCategoryFields(Arrays.asList())
+                .setCustomResultIndex("opensearch-forecast-result-test")
             .build();
 
         NodeClient client = new NodeClient(Settings.EMPTY, threadPool) {
