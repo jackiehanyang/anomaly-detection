@@ -11,6 +11,7 @@
 
 package org.opensearch.timeseries.indices;
 
+import static org.opensearch.ad.settings.AnomalyDetectorSettings.FLATTENED_ANOMALY_RESULTS_INDEX_MAPPING_FILE;
 import static org.opensearch.core.xcontent.XContentParserUtils.ensureExpectedToken;
 import static org.opensearch.timeseries.util.RestHandlerUtils.createXContentParserFromRegistry;
 
@@ -1010,6 +1011,36 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         } else {
             validateResultIndexAndExecute(resultIndexOrAlias, function, false, listener);
         }
+    }
+
+    public <T> void initFlattenedResultIndex(String indexName,
+                                         ExecutorFunction function,
+                                         ActionListener<T> actionListener) throws IOException {
+        System.out.println("in initFlattenedResultIndex");
+
+        CreateIndexRequest request = new CreateIndexRequest(indexName)
+                .mapping(getFlattenedResultIndexMappings(), XContentType.JSON);
+        choosePrimaryShards(request, false);
+
+        adminClient.indices().create(request, ActionListener.wrap(response -> {
+            System.out.println("Successfully created flattened custom result index: " + indexName);
+
+            logger.debug("Successfully created flattened custom result index {}", indexName);
+            function.execute();
+        }, exception -> {
+            logger.error("Failed to create flattened custom result to result index " + indexName, exception);
+            actionListener.onFailure(exception);
+        }));
+    }
+
+
+    /**
+     * Get flattened reuslt index mapping json content
+     * @return
+     * @throws IOException
+     */
+    public String getFlattenedResultIndexMappings() throws IOException {
+        return getMappings(FLATTENED_ANOMALY_RESULTS_INDEX_MAPPING_FILE);
     }
 
     public <T> void validateCustomIndexForBackendJob(

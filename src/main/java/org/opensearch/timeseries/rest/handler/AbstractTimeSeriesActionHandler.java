@@ -22,6 +22,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsAction;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsRequest;
@@ -268,8 +269,6 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
     // if isDryRun is true then this method is being executed through Validation API meaning actual
     // index won't be created, only validation checks will be executed throughout the class
     private void createOrUpdateConfig(ActionListener<T> listener) {
-        System.out.println("createOrUpdateConfig called");
-
         try (ThreadContext.StoredContext context = client.threadPool().getThreadContext().stashContext()) {
             if (!timeSeriesIndices.doesConfigIndexExist() && !this.isDryRun) {
                 logger.info("Config Indices do not exist");
@@ -412,7 +411,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
      * Prepare for indexing a new config.
      * @param indexingDryRun if this is dryrun for indexing; when validation, it is true; when create/update, it is false
      */
-    protected void prepareConfigIndexing(boolean indexingDryRun, ActionListener<T> listener) {
+    protected void prepareConfigIndexing(boolean indexingDryRun, ActionListener<T> listener) throws IOException {
         if (method == RestRequest.Method.PUT) {
             handler.confirmJobRunning(clusterService, client, id, listener, () -> {
                 handleFlattenResultIndexMappingUpdate(listener);
@@ -423,20 +422,32 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
 
             if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
                 if (config.getFlattenResultIndexMapping()) {
-                    setupIngestPipeline(config.getCustomResultIndexOrAlias(), listener);
+                    System.out.println("entry");
+                    String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getId();
+                    System.out.println("flattened result index name: " + indexName);
+
+                    timeSeriesIndices.initFlattenedResultIndex(indexName, () -> setupIngestPipeline(listener), listener);
                 }
             }
         }
     }
 
-    protected void setupIngestPipeline(String resultIndexOrAlias, ActionListener<T> listener) {
-        String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getName();
+    protected void setupIngestPipeline(ActionListener<T> listener) {
+        System.out.println("in setupIngestPipeline");
+
+        String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getId();
+        System.out.println("flattened result index name111: " + indexName);
+
+        String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getId();
+
+        System.out.println("pipelineId: " + pipelineId);
+
 
         try {
             XContentBuilder pipelineBuilder = XContentFactory.jsonBuilder();
             pipelineBuilder.startObject();
             {
-                pipelineBuilder.field("description", "Ingest pipeline for anomaly detector with result index: " + resultIndexOrAlias);
+                pipelineBuilder.field("description", "Ingest pipeline for anomaly detector with result index: " + indexName);
                 pipelineBuilder.startArray("processors");
                 {
                     pipelineBuilder.startObject();
@@ -465,7 +476,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                     if (response.isAcknowledged()) {
                         try {
                             // update index setting
-                            updateResultIndexSetting(pipelineId);
+                            updateResultIndexSetting(pipelineId, indexName);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
@@ -494,9 +505,10 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         }
     }
 
-    protected void updateResultIndexSetting(String pipelineId) throws IOException {
+    protected void updateResultIndexSetting(String pipelineId, String flattenedResultIndex) throws IOException {
         UpdateSettingsRequest updateSettingsRequest = new UpdateSettingsRequest();
-        updateSettingsRequest.indices(config.getCustomResultIndexOrAlias());
+        // update the flattened result index, bind the ingest pipeline with it
+        updateSettingsRequest.indices(flattenedResultIndex);
 
         Settings.Builder settingsBuilder = Settings.builder();
         settingsBuilder.put("index.default_pipeline", pipelineId);
@@ -509,14 +521,14 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 if (acknowledgedResponse.isAcknowledged()) {
                     logger
                         .info(
-                            "Custom result index settings updated successfully for index or alias: {} "
+                            "Flattened custom result index settings updated successfully for index or alias: {} "
                                 + "with default ingest pipeline: {}",
-                            config.getCustomResultIndexOrAlias(),
+                                flattenedResultIndex,
                             pipelineId
                         );
                 } else {
                     logger
-                        .warn("Failed to update custom result index settings for index or alias: {}", config.getCustomResultIndexOrAlias());
+                        .warn("Failed to update custom result index settings for index or alias: {}", flattenedResultIndex);
                 }
             }
 
@@ -537,7 +549,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         }
         if (config.getFlattenResultIndexMapping() != null && config.getFlattenResultIndexMapping()) {
             // if field value is true, create the pipeline. No need to get and compare with previous value
-            setupIngestPipeline(config.getCustomResultIndexOrAlias(), listener);
+            setupIngestPipeline(listener);
         } else {
             String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getId();
             client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
@@ -979,7 +991,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         });
     }
 
-    protected void onCreateMappingsResponse(CreateIndexResponse response, boolean indexingDryRun, ActionListener<T> listener) {
+    protected void onCreateMappingsResponse(CreateIndexResponse response, boolean indexingDryRun, ActionListener<T> listener) throws IOException {
         if (response.isAcknowledged()) {
             logger.info("Created {} with mappings.", CommonName.CONFIG_INDEX);
             prepareConfigIndexing(indexingDryRun, listener);

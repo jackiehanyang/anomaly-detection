@@ -39,6 +39,7 @@ import org.opensearch.transport.TransportService;
 public class ADResultBulkTransportAction extends ResultBulkTransportAction<AnomalyResult, ADResultWriteRequest, ADResultBulkRequest> {
 
     private static final Logger LOG = LogManager.getLogger(ADResultBulkTransportAction.class);
+    private final ClusterService clusterService;
 
     @Inject
     public ADResultBulkTransportAction(
@@ -61,6 +62,7 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
             ADCommonName.ANOMALY_RESULT_INDEX_ALIAS,
             ADResultBulkRequest::new
         );
+        this.clusterService = clusterService;
         clusterService.getClusterSettings().addSettingsUpdateConsumer(AD_INDEX_PRESSURE_SOFT_LIMIT, it -> softLimit = it);
         clusterService.getClusterSettings().addSettingsUpdateConsumer(AD_INDEX_PRESSURE_HARD_LIMIT, it -> hardLimit = it);
     }
@@ -70,30 +72,51 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
         BulkRequest bulkRequest = new BulkRequest();
         List<ADResultWriteRequest> results = request.getResults();
 
-        if (indexingPressurePercent <= softLimit) {
-            for (ADResultWriteRequest resultWriteRequest : results) {
-                addResult(bulkRequest, resultWriteRequest.getResult(), resultWriteRequest.getResultIndex());
-            }
-        } else if (indexingPressurePercent <= hardLimit) {
-            // exceed soft limit (60%) but smaller than hard limit (90%)
-            float acceptProbability = 1 - indexingPressurePercent;
-            for (ADResultWriteRequest resultWriteRequest : results) {
-                AnomalyResult result = resultWriteRequest.getResult();
-                if (result.isHighPriority() || random.nextFloat() < acceptProbability) {
-                    addResult(bulkRequest, result, resultWriteRequest.getResultIndex());
-                }
-            }
-        } else {
-            // if exceeding hard limit, only index non-zero grade or error result
-            for (ADResultWriteRequest resultWriteRequest : results) {
-                AnomalyResult result = resultWriteRequest.getResult();
-                if (result.isHighPriority()) {
-                    addResult(bulkRequest, result, resultWriteRequest.getResultIndex());
-                }
+        for (ADResultWriteRequest resultWriteRequest : results) {
+            AnomalyResult result = resultWriteRequest.getResult();
+            String resultIndex = resultWriteRequest.getResultIndex();
+
+            // Add result based on indexing pressure
+            if (shouldAddResult(indexingPressurePercent, result)) {
+                addResult(bulkRequest, result, resultIndex);
+                addToFlattenedIndexIfExists(bulkRequest, result, resultIndex);
             }
         }
 
         return bulkRequest;
+    }
+
+    /**
+     * Determines whether a result should be added based on indexing pressure and result priority.
+     */
+    private boolean shouldAddResult(float indexingPressurePercent, AnomalyResult result) {
+        if (indexingPressurePercent <= softLimit) {
+            // Always add when below soft limit
+            return true;
+        } else if (indexingPressurePercent <= hardLimit) {
+            // exceed soft limit (60%) but smaller than hard limit (90%)
+            float acceptProbability = 1 - indexingPressurePercent;
+            return result.isHighPriority() || random.nextFloat() < acceptProbability;
+        } else {
+            // if exceeding hard limit, only index non-zero grade or error result
+            return result.isHighPriority();
+        }
+    }
+
+    /**
+     * Adds the result to a flattened index if the flattened index exists.
+     */
+    private void addToFlattenedIndexIfExists(BulkRequest bulkRequest, AnomalyResult result, String resultIndex) {
+        String flattenedResultIndexName = resultIndex + "_flattened_" + result.getDetectorId();
+        System.out.println("ADResultBulkTransportAction 111: " + flattenedResultIndexName);
+        if (doesFlattenedResultIndexExist(flattenedResultIndexName)) {
+            System.out.println("ADResultBulkTransportAction 113: exist");
+            addResult(bulkRequest, result, flattenedResultIndexName);
+        }
+    }
+
+    private boolean doesFlattenedResultIndexExist(String indexName) {
+        return clusterService.state().metadata().hasIndex(indexName);
     }
 
     private void addResult(BulkRequest bulkRequest, AnomalyResult result, String resultIndex) {
