@@ -107,7 +107,7 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
      * Adds the result to a flattened index if the flattened index exists.
      */
     private void addToFlattenedIndexIfExists(BulkRequest bulkRequest, AnomalyResult result, String resultIndex) {
-        String flattenedResultIndexName = resultIndex + "_flattened_" + result.getDetectorId();
+        String flattenedResultIndexName = resultIndex + "_flattened_";
         System.out.println("ADResultBulkTransportAction 111: " + flattenedResultIndexName);
         if (doesFlattenedResultIndexExist(flattenedResultIndexName)) {
             System.out.println("ADResultBulkTransportAction 113: exist");
