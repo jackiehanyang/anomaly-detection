@@ -421,11 +421,12 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             // Step 1: Create configuration
             createConfig(indexingDryRun, ActionListener.wrap(
                     createConfigResponse -> {
+
                         // Step 2: Initialize flattened result index if required
                         if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
                             if (config.getFlattenResultIndexMapping()) {
                                 System.out.println("entry");
-                                String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getId();
+                                String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + id;
                                 System.out.println("flattened result index name: " + indexName);
 
                                 timeSeriesIndices.initFlattenedResultIndex(
@@ -445,7 +446,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
     protected void setupIngestPipeline(ActionListener<T> listener) {
         System.out.println("in setupIngestPipeline");
 
-        String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getId();
+        String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + id;
         System.out.println("flattened result index name111: " + indexName);
 
         String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getId();
