@@ -418,19 +418,29 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 updateConfig(id, indexingDryRun, listener);
             }, xContentRegistry);
         } else {
-            createConfig(indexingDryRun, listener);
+            // Step 1: Create configuration
+            createConfig(indexingDryRun, ActionListener.wrap(
+                    createConfigResponse -> {
+                        // Step 2: Initialize flattened result index if required
+                        if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
+                            if (config.getFlattenResultIndexMapping()) {
+                                System.out.println("entry");
+                                String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getId();
+                                System.out.println("flattened result index name: " + indexName);
 
-            if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
-                if (config.getFlattenResultIndexMapping()) {
-                    System.out.println("entry");
-                    String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getId();
-                    System.out.println("flattened result index name: " + indexName);
-
-                    timeSeriesIndices.initFlattenedResultIndex(indexName, () -> setupIngestPipeline(listener), listener);
-                }
-            }
+                                timeSeriesIndices.initFlattenedResultIndex(
+                                        indexName,
+                                        () -> setupIngestPipeline(listener), // Step 3: Setup ingest pipeline after index initialization
+                                        listener
+                                );
+                            }
+                        }
+                    },
+                    listener::onFailure // Handle errors in createConfig
+            ));
         }
     }
+
 
     protected void setupIngestPipeline(ActionListener<T> listener) {
         System.out.println("in setupIngestPipeline");
