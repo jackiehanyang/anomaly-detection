@@ -427,64 +427,30 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
                             if (config.getFlattenResultIndexMapping()) {
                                 System.out.println("entry");
-                                // Get the detector ID based on its name
-                                String detectorName = config.getName();
-                                String customResultIndex = config.getCustomResultIndexOrAlias();
+                                String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getName();
+                                System.out.println("flattened result index name: " + indexName);
 
-                                searchDetectorIdByName(detectorName, ActionListener.wrap(
-                                        detectorId -> {
-                                            // Append the detector ID to the index name
-                                            String indexName = customResultIndex + "_flattened_" + detectorId;
-                                            System.out.println("flattened result index name: " + indexName);
-
-                                            // Initialize flattened result index
-                                            timeSeriesIndices.initFlattenedResultIndex(
-                                                    indexName,
-                                                    () -> setupIngestPipeline(detectorId, listener),
-                                                    listener
-                                            );
-                                        },
-                                        listener::onFailure
-                                ));
+                                timeSeriesIndices.initFlattenedResultIndex(
+                                        indexName,
+                                        () -> setupIngestPipeline(listener), // Step 3: Setup ingest pipeline after index initialization
+                                        listener
+                                );
                             }
                         }
                     },
-                    listener::onFailure
+                    listener::onFailure // Handle errors in createConfig
             ));
         }
     }
 
 
-    // Helper method to search for the detector ID by name
-    private void searchDetectorIdByName(String detectorName, ActionListener<String> listener) {
-        SearchRequest searchRequest = new SearchRequest(CommonName.CONFIG_INDEX); // Index name for detectors
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
-                .query(QueryBuilders.matchQuery("name", detectorName))
-                .fetchSource(false) // Fetch only the ID
-                .size(1); // Limit to one result
-        searchRequest.source(searchSourceBuilder);
-
-        client.search(searchRequest, ActionListener.wrap(
-                searchResponse -> {
-                    if (searchResponse.getHits().getTotalHits().value > 0) {
-                        SearchHit hit = searchResponse.getHits().getAt(0);
-                        listener.onResponse(hit.getId());
-                    } else {
-                        listener.onFailure(new RuntimeException("Detector not found with name: " + detectorName));
-                    }
-                },
-                listener::onFailure
-        ));
-    }
-
-
-    protected void setupIngestPipeline(String detectorId, ActionListener<T> listener) {
+    protected void setupIngestPipeline(ActionListener<T> listener) {
         System.out.println("in setupIngestPipeline");
 
-        String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId;
+        String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + config.getName();
         System.out.println("flattened result index name111: " + indexName);
 
-        String pipelineId = "anomaly_detection_ingest_pipeline_" + detectorId;
+        String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getName();
 
         System.out.println("pipelineId: " + pipelineId);
 
@@ -595,7 +561,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         }
         if (config.getFlattenResultIndexMapping() != null && config.getFlattenResultIndexMapping()) {
             // if field value is true, create the pipeline. No need to get and compare with previous value
-            setupIngestPipeline(id, listener);
+            setupIngestPipeline(listener);
         } else {
             String pipelineId = "anomaly_detection_ingest_pipeline_" + config.getId();
             client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
