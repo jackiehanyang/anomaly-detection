@@ -120,58 +120,11 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
      * Adds the result to a flattened index if the flattened index exists.
      */
     private void addToFlattenedIndexIfExists(BulkRequest bulkRequest, AnomalyResult result, String resultIndex) {
-        searchDetectorNameById(result.getDetectorId(), new ActionListener<>() {
-            @Override
-            public void onResponse(String detectorName) {
-                try {
-                    // Construct the flattened result index name
-                    String flattenedResultIndexName = resultIndex + "_flattened_" + detectorName;
-                    System.out.println("Flattened result index name: " + flattenedResultIndexName);
-
-                    if (doesFlattenedResultIndexExist(flattenedResultIndexName)) {
-                        System.out.println("Flattened index exists: " + flattenedResultIndexName);
-                        addResult(bulkRequest, result, flattenedResultIndexName);
-                    }
-                } catch (Exception e) {
-                    LOG.error("Error adding result to flattened index for detector ID: " + result.getDetectorId(), e);
-                }
-            }
-
-            @Override
-            public void onFailure(Exception e) {
-                LOG.error("Failed to retrieve detector name for detector ID: " + result.getDetectorId(), e);
-            }
-        });
-    }
-
-    private void searchDetectorNameById(String detectorId, ActionListener<String> listener) {
-        try {
-            SearchRequest searchRequest = new SearchRequest(CommonName.CONFIG_INDEX);
-            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
-                    .query(QueryBuilders.idsQuery().addIds(detectorId))
-                    .fetchSource("name", null)
-                    .size(1);
-            searchRequest.source(searchSourceBuilder);
-
-            client.search(searchRequest, ActionListener.wrap(
-                    searchResponse -> {
-                        if (searchResponse.getHits().getTotalHits().value > 0) {
-                            SearchHit hit = searchResponse.getHits().getAt(0);
-                            Map<String, Object> sourceAsMap = hit.getSourceAsMap();
-                            String detectorName = (String) sourceAsMap.get("name");
-                            if (detectorName != null) {
-                                listener.onResponse(detectorName); // Notify success
-                            } else {
-                                listener.onFailure(new RuntimeException("Name field is missing for detector ID: " + detectorId));
-                            }
-                        } else {
-                            listener.onFailure(new RuntimeException("Detector not found with ID: " + detectorId));
-                        }
-                    },
-                    listener::onFailure
-            ));
-        } catch (Exception e) {
-            listener.onFailure(e);
+        String flattenedResultIndexName = resultIndex + "_flattened_" + result.getDetectorId().toLowerCase();
+        System.out.println("ADResultBulkTransportAction 111: " + flattenedResultIndexName);
+        if (doesFlattenedResultIndexExist(flattenedResultIndexName)) {
+            System.out.println("ADResultBulkTransportAction 113: exist");
+            addResult(bulkRequest, result, flattenedResultIndexName);
         }
     }
 
