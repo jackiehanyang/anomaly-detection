@@ -1030,7 +1030,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
                     } else {
                         String errorMsg = "Index creation not acknowledged for index: " + indexName;
                         logger.error(errorMsg);
-                        listener.onFailure(new EndRunException(error, false));
+                        actionListener.onFailure(new EndRunException(errorMsg, false));
                     }
                 },
                 exception -> {
