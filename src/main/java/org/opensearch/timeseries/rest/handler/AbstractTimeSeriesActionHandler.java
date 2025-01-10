@@ -433,7 +433,13 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                                     timeSeriesIndices.initFlattenedResultIndex(indexName, ActionListener.wrap(
                                             initResponse -> {
                                                 // Setup ingest pipeline upon successful index initialization
-                                                setupIngestPipeline(detectorId, listener);
+                                                setupIngestPipeline(detectorId, ActionListener.wrap(
+                                                        pipelineResponse -> {
+                                                            // Ensure final response is sent to the listener
+                                                            listener.onResponse(createConfigResponse);
+                                                        },
+                                                        listener::onFailure // Handle pipeline setup failure
+                                                ));
                                             },
                                             exception -> {
                                                 // Handle failure in index initialization
