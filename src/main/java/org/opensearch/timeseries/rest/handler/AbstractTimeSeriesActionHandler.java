@@ -420,29 +420,53 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 updateConfig(id, indexingDryRun, listener);
             }, xContentRegistry);
         } else {
-            // Step 1: Create configuration
+            long start = System.currentTimeMillis();
+
             createConfig(indexingDryRun, ActionListener.wrap(
                     createConfigResponse -> {
-                        String detectorId = ((IndexAnomalyDetectorResponse) createConfigResponse).getId().toLowerCase();
-                        System.out.println("extracted id: " + detectorId);
+                        long createConfigTime = System.currentTimeMillis() - start;
+                        System.out.println("createConfig took: " + createConfigTime + "ms");
 
-                        // Step 2: Initialize flattened result index if required
-                        if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
-                            if (config.getFlattenResultIndexMapping()) {
-                                System.out.println("entry");
-                                String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId;
+                        if (createConfigResponse instanceof IndexAnomalyDetectorResponse) {
+                            String detectorId = ((IndexAnomalyDetectorResponse) createConfigResponse).getId();
+                            System.out.println("Extracted detector ID: " + detectorId);
 
-                                // Initialize flattened result index
-                                timeSeriesIndices.initFlattenedResultIndex(
-                                        indexName,
-                                        () -> setupIngestPipeline(detectorId, listener),
-                                        listener
-                                );
+                            if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
+                                if (config.getFlattenResultIndexMapping()) {
+                                    String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId.toLowerCase();
+                                    long indexStart = System.currentTimeMillis();
+                                    timeSeriesIndices.initFlattenedResultIndex(
+                                            indexName,
+                                            () -> {
+                                                long initIndexTime = System.currentTimeMillis() - indexStart;
+                                                System.out.println("initFlattenedResultIndex took: " + initIndexTime + "ms");
+
+                                                long pipelineStart = System.currentTimeMillis();
+                                                setupIngestPipeline(detectorId, ActionListener.wrap(
+                                                        pipelineSetupResponse -> {
+                                                            long pipelineTime = System.currentTimeMillis() - pipelineStart;
+                                                            System.out.println("setupIngestPipeline took: " + pipelineTime + "ms");
+
+                                                            listener.onResponse(createConfigResponse);
+                                                        },
+                                                        listener::onFailure
+                                                ));
+                                            },
+                                            listener
+                                    );
+                                } else {
+                                    listener.onResponse(createConfigResponse);
+                                }
+                            } else {
+                                listener.onResponse(createConfigResponse);
                             }
+                        } else {
+                            listener.onFailure(new IllegalStateException("Unexpected response type: " + createConfigResponse.getClass().getName()));
                         }
                     },
                     listener::onFailure
             ));
+
         }
     }
 
