@@ -444,10 +444,8 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                                                 long pipelineStart = System.currentTimeMillis();
                                                 setupIngestPipeline(detectorId, ActionListener.wrap(
                                                         pipelineSetupResponse -> {
-                                                            long pipelineTime = System.currentTimeMillis() - pipelineStart;
-                                                            System.out.println("setupIngestPipeline took: " + pipelineTime + "ms");
-
-                                                            listener.onResponse(createConfigResponse);
+                                                            System.out.println("Pipeline setup completed");
+                                                            listener.onResponse(createConfigResponse); // Call onResponse here!
                                                         },
                                                         listener::onFailure
                                                 ));
@@ -456,9 +454,12 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                                     );
                                 } else {
                                     listener.onResponse(createConfigResponse);
+                                    System.out.println("1Workflow completed successfully. Returning response.");
                                 }
                             } else {
                                 listener.onResponse(createConfigResponse);
+                                System.out.println("2Workflow completed successfully. Returning response.");
+
                             }
                         } else {
                             listener.onFailure(new IllegalStateException("Unexpected response type: " + createConfigResponse.getClass().getName()));
