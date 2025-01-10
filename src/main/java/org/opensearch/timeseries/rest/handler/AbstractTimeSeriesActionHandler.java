@@ -40,6 +40,7 @@ import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.action.support.replication.ReplicationResponse;
+import org.opensearch.ad.transport.IndexAnomalyDetectorResponse;
 import org.opensearch.client.Client;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.Settings;
@@ -422,41 +423,21 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             // Step 1: Create configuration
             createConfig(indexingDryRun, ActionListener.wrap(
                     createConfigResponse -> {
-
-                        System.out.println("Response class name: " + createConfigResponse.getClass().getName());
-
-                        createConfigResponse.getClass().getName();
-                        if (createConfigResponse instanceof IndexResponse) {
-                            String id = ((IndexResponse) createConfigResponse).getId();
-                            System.out.println("Extracted ID: " + id);
-                        }
-
-                        System.out.println("Response details: " + createConfigResponse.toString());
-
+                        String detectorId = ((IndexAnomalyDetectorResponse) createConfigResponse).getId().toLowerCase();
+                        System.out.println("extracted id: " + detectorId);
 
                         // Step 2: Initialize flattened result index if required
                         if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
                             if (config.getFlattenResultIndexMapping()) {
                                 System.out.println("entry");
-                                // Get the detector ID based on its name
-                                String detectorName = config.getName();
-                                String customResultIndex = config.getCustomResultIndexOrAlias();
+                                String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId;
 
-                                searchDetectorIdByName(detectorName, ActionListener.wrap(
-                                        detectorId -> {
-                                            // Append the detector ID to the index name
-                                            String indexName = customResultIndex + "_flattened_" + detectorId.toLowerCase();
-                                            System.out.println("flattened result index name: " + indexName);
-
-                                            // Initialize flattened result index
-                                            timeSeriesIndices.initFlattenedResultIndex(
-                                                    indexName,
-                                                    () -> setupIngestPipeline(detectorId, listener),
-                                                    listener
-                                            );
-                                        },
-                                        listener::onFailure
-                                ));
+                                // Initialize flattened result index
+                                timeSeriesIndices.initFlattenedResultIndex(
+                                        indexName,
+                                        () -> setupIngestPipeline(detectorId, listener),
+                                        listener
+                                );
                             }
                         }
                     },
@@ -464,32 +445,6 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             ));
         }
     }
-
-
-    // Helper method to search for the detector ID by name
-    private void searchDetectorIdByName(String detectorName, ActionListener<String> listener) {
-        SearchRequest searchRequest = new SearchRequest(CommonName.CONFIG_INDEX); // Index name for detectors
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
-                .query(QueryBuilders.matchQuery("name", detectorName))
-                .fetchSource(false) // Fetch only the ID
-                .size(1); // Limit to one result
-        searchRequest.source(searchSourceBuilder);
-
-        client.search(searchRequest, ActionListener.wrap(
-                searchResponse -> {
-                    if (searchResponse.getHits().getTotalHits().value > 0) {
-                        SearchHit hit = searchResponse.getHits().getAt(0);
-                        listener.onResponse(hit.getId());
-                    } else {
-                        listener.onFailure(new RuntimeException("Detector not found with name: " + detectorName));
-                    }
-                },
-                listener::onFailure
-        ));
-    }
-
-
-
 
     protected void setupIngestPipeline(String detectorId, ActionListener<T> listener) {
         System.out.println("in setupIngestPipeline");
