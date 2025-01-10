@@ -423,6 +423,17 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             createConfig(indexingDryRun, ActionListener.wrap(
                     createConfigResponse -> {
 
+                        System.out.println("Response class name: " + createConfigResponse.getClass().getName());
+
+                        createConfigResponse.getClass().getName();
+                        if (createConfigResponse instanceof IndexResponse) {
+                            String id = ((IndexResponse) createConfigResponse).getId();
+                            System.out.println("Extracted ID: " + id);
+                        }
+
+                        System.out.println("Response details: " + createConfigResponse.toString());
+
+
                         // Step 2: Initialize flattened result index if required
                         if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
                             if (config.getFlattenResultIndexMapping()) {
