@@ -1013,25 +1013,33 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         }
     }
 
-    public <T> void initFlattenedResultIndex(String indexName,
-                                         ExecutorFunction function,
-                                         ActionListener<T> actionListener) throws IOException {
-        System.out.println("in initFlattenedResultIndex");
+    public <T> void initFlattenedResultIndex(String indexName, ActionListener<T> actionListener) throws IOException {
+        logger.info("Initializing flattened result index: {}", indexName);
 
         CreateIndexRequest request = new CreateIndexRequest(indexName)
                 .mapping(getFlattenedResultIndexMappings(), XContentType.JSON);
+
+        // Choose primary shards, based on your existing logic
         choosePrimaryShards(request, false);
 
-        adminClient.indices().create(request, ActionListener.wrap(response -> {
-            System.out.println("Successfully created flattened custom result index: " + indexName);
-
-            logger.debug("Successfully created flattened custom result index {}", indexName);
-            function.execute();
-        }, exception -> {
-            logger.error("Failed to create flattened custom result to result index " + indexName, exception);
-            actionListener.onFailure(exception);
-        }));
+        adminClient.indices().create(request, ActionListener.wrap(
+                response -> {
+                    if (response.isAcknowledged()) {
+                        logger.info("Successfully created flattened custom result index: {}", indexName);
+                        actionListener.onResponse((T) response); // Notify success
+                    } else {
+                        String errorMsg = "Index creation not acknowledged for index: " + indexName;
+                        logger.error(errorMsg);
+                        listener.onFailure(new EndRunException(error, false));
+                    }
+                },
+                exception -> {
+                    logger.error("Failed to create flattened custom result index: {}", indexName, exception);
+                    actionListener.onFailure(exception); // Notify failure
+                }
+        ));
     }
+
 
 
     /**

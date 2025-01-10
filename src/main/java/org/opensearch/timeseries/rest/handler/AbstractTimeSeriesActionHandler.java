@@ -420,56 +420,45 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 updateConfig(id, indexingDryRun, listener);
             }, xContentRegistry);
         } else {
-            long start = System.currentTimeMillis();
-
             createConfig(indexingDryRun, ActionListener.wrap(
                     createConfigResponse -> {
-                        long createConfigTime = System.currentTimeMillis() - start;
-                        System.out.println("createConfig took: " + createConfigTime + "ms");
-
-                        if (createConfigResponse instanceof IndexAnomalyDetectorResponse) {
-                            String detectorId = ((IndexAnomalyDetectorResponse) createConfigResponse).getId();
-                            System.out.println("Extracted detector ID: " + detectorId);
-
-                            if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
-                                if (config.getFlattenResultIndexMapping()) {
+                        if (!indexingDryRun && config.getCustomResultIndexOrAlias() != null) {
+                            if (config.getFlattenResultIndexMapping()) {
+                                // Flattening is enabled
+                                if (createConfigResponse instanceof IndexAnomalyDetectorResponse) {
+                                    String detectorId = ((IndexAnomalyDetectorResponse) createConfigResponse).getId();
                                     String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId.toLowerCase();
-                                    long indexStart = System.currentTimeMillis();
-                                    timeSeriesIndices.initFlattenedResultIndex(
-                                            indexName,
-                                            () -> {
-                                                long initIndexTime = System.currentTimeMillis() - indexStart;
-                                                System.out.println("initFlattenedResultIndex took: " + initIndexTime + "ms");
 
-                                                long pipelineStart = System.currentTimeMillis();
-                                                setupIngestPipeline(detectorId, ActionListener.wrap(
-                                                        pipelineSetupResponse -> {
-                                                            System.out.println("Pipeline setup completed");
-                                                            listener.onResponse(createConfigResponse); // Call onResponse here!
-                                                        },
-                                                        listener::onFailure
-                                                ));
+                                    // Initialize the flattened result index
+                                    timeSeriesIndices.initFlattenedResultIndex(indexName, ActionListener.wrap(
+                                            initResponse -> {
+                                                // Setup ingest pipeline upon successful index initialization
+                                                setupIngestPipeline(detectorId, listener);
                                             },
-                                            listener
-                                    );
+                                            exception -> {
+                                                // Handle failure in index initialization
+                                                listener.onFailure(exception);
+                                            }
+                                    ));
                                 } else {
-                                    listener.onResponse(createConfigResponse);
-                                    System.out.println("1Workflow completed successfully. Returning response.");
+                                    // Unexpected response type
+                                    listener.onFailure(new IllegalStateException("Unexpected response type: " +
+                                            createConfigResponse.getClass().getName()));
                                 }
                             } else {
+                                // Flattening is disabled
                                 listener.onResponse(createConfigResponse);
-                                System.out.println("2Workflow completed successfully. Returning response.");
-
                             }
                         } else {
-                            listener.onFailure(new IllegalStateException("Unexpected response type: " + createConfigResponse.getClass().getName()));
+                            // No custom result index or alias, return the createConfigResponse
+                            listener.onResponse(createConfigResponse);
                         }
                     },
-                    listener::onFailure
+                    listener::onFailure // Handle createConfig failure
             ));
-
         }
     }
+
 
     protected void setupIngestPipeline(String detectorId, ActionListener<T> listener) {
         System.out.println("in setupIngestPipeline");
