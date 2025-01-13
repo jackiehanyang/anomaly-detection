@@ -430,37 +430,28 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                                     String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId.toLowerCase();
 
                                     // Initialize the flattened result index
-                                    timeSeriesIndices.initFlattenedResultIndex(indexName, ActionListener.wrap(
-                                            initResponse -> {
-                                                // Setup ingest pipeline upon successful index initialization
-                                                setupIngestPipeline(detectorId, ActionListener.wrap(
-                                                        pipelineResponse -> {
-                                                            // Ensure final response is sent to the listener
-                                                            listener.onResponse(createConfigResponse);
-                                                        },
-                                                        listener::onFailure // Handle pipeline setup failure
-                                                ));
-                                            },
-                                            exception -> {
-                                                // Handle failure in index initialization
-                                                listener.onFailure(exception);
-                                            }
-                                    ));
+                                    timeSeriesIndices.initFlattenedResultIndex(indexName,
+                                            ActionListener
+                                                    .wrap(
+                                                            initResponse -> setupIngestPipeline(detectorId, listener),
+                                                            exception -> listener.onFailure(exception)
+                                                        ));
                                 } else {
-                                    // Unexpected response type
                                     listener.onFailure(new IllegalStateException("Unexpected response type: " +
                                             createConfigResponse.getClass().getName()));
+                                    return;
                                 }
                             } else {
-                                // Flattening is disabled
-                                listener.onResponse(createConfigResponse);
+                                // flatten result index is not enabled
+                                return;
                             }
                         } else {
                             // No custom result index or alias, return the createConfigResponse
-                            listener.onResponse(createConfigResponse);
+                            return;
                         }
                     },
-                    listener::onFailure // Handle createConfig failure
+                    // Handle createConfig failure
+                    listener::onFailure
             ));
         }
     }
@@ -475,7 +466,6 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         String pipelineId = "anomaly_detection_ingest_pipeline_" + detectorId.toLowerCase();
 
         System.out.println("pipelineId: " + pipelineId);
-
 
         try {
             XContentBuilder pipelineBuilder = XContentFactory.jsonBuilder();
@@ -510,7 +500,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                     if (response.isAcknowledged()) {
                         try {
                             // update index setting
-                            updateResultIndexSetting(pipelineId, indexName);
+                            updateResultIndexSetting(pipelineId, indexName, listener);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
@@ -539,7 +529,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         }
     }
 
-    protected void updateResultIndexSetting(String pipelineId, String flattenedResultIndex) throws IOException {
+    protected void updateResultIndexSetting(String pipelineId, String flattenedResultIndex, ActionListener<T> listener) throws IOException {
         UpdateSettingsRequest updateSettingsRequest = new UpdateSettingsRequest();
         // update the flattened result index, bind the ingest pipeline with it
         updateSettingsRequest.indices(flattenedResultIndex);
@@ -548,33 +538,14 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         settingsBuilder.put("index.default_pipeline", pipelineId);
 
         updateSettingsRequest.settings(settingsBuilder);
-
-        client.admin().indices().updateSettings(updateSettingsRequest, new ActionListener<AcknowledgedResponse>() {
-            @Override
-            public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                if (acknowledgedResponse.isAcknowledged()) {
-                    logger
-                        .info(
-                            "Flattened custom result index settings updated successfully for index or alias: {} "
-                                + "with default ingest pipeline: {}",
+        client.admin().indices().updateSettings(updateSettingsRequest, ActionListener.wrap(response -> {
+            logger.info("Flattened custom result index settings updated successfully for index or alias: {} "
+                                        + "with default ingest pipeline: {}",
                                 flattenedResultIndex,
-                            pipelineId
+                                pipelineId
                         );
-                } else {
-                    logger
-                        .warn("Failed to update custom result index settings for index or alias: {}", flattenedResultIndex);
-                }
-            }
-
-            @Override
-            public void onFailure(Exception e) {
-                logger
-                    .error(
-                        "Error while updating custom result index settings for index or alias: {}",
-                        config.getCustomResultIndexOrAlias()
-                    );
-            }
-        });
+            listener.onResponse(null);
+        }, listener::onFailure));
     }
 
     private void handleFlattenResultIndexMappingUpdate(ActionListener<T> listener) {
