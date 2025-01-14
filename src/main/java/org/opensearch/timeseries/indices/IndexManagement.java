@@ -1020,6 +1020,7 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         CreateIndexRequest request = new CreateIndexRequest(indexName)
                 .mapping(getFlattenedResultIndexMappings(), XContentType.JSON)
                 .settings(settings);
+        choosePrimaryShards(request, false);
 
         // Execute the index creation request
         adminClient.indices().create(request, ActionListener.wrap(
