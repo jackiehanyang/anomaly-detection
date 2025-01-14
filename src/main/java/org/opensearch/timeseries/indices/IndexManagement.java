@@ -1016,30 +1016,30 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
     public void initFlattenedResultIndex(String indexName, ActionListener<CreateIndexResponse> actionListener) throws IOException {
         logger.info("Initializing flattened result index: {}", indexName);
 
+        // Create a request with the flattened result index mappings and settings
         CreateIndexRequest request = new CreateIndexRequest(indexName)
-                .mapping(getFlattenedResultIndexMappings(), XContentType.JSON).settings(settings);
-        adminClient.indices().create(request, actionListener);
+                .mapping(getFlattenedResultIndexMappings(), XContentType.JSON)
+                .settings(settings);
 
-//        // Choose primary shards, based on your existing logic
-//        choosePrimaryShards(request, false);
-//
-//        adminClient.indices().create(request, ActionListener.wrap(
-//                response -> {
-//                    if (response.isAcknowledged()) {
-//                        logger.info("Successfully created flattened custom result index: {}", indexName);
-//                        actionListener.onResponse((T) response); // Notify success
-//                    } else {
-//                        String errorMsg = "Index creation not acknowledged for index: " + indexName;
-//                        logger.error(errorMsg);
-//                        actionListener.onFailure(new EndRunException(errorMsg, false));
-//                    }
-//                },
-//                exception -> {
-//                    logger.error("Failed to create flattened custom result index: {}", indexName, exception);
-//                    actionListener.onFailure(exception); // Notify failure
-//                }
-//        ));
+        // Execute the index creation request
+        adminClient.indices().create(request, ActionListener.wrap(
+                response -> {
+                    if (response.isAcknowledged()) {
+                        logger.info("Successfully created flattened result index: {}", indexName);
+                        actionListener.onResponse(response);
+                    } else {
+                        String errorMsg = "Index creation not acknowledged for index: " + indexName;
+                        logger.error(errorMsg);
+                        actionListener.onFailure(new IllegalStateException(errorMsg));
+                    }
+                },
+                exception -> {
+                    logger.error("Failed to create flattened result index: {}", indexName, exception);
+                    actionListener.onFailure(exception);
+                }
+        ));
     }
+
 
 
 

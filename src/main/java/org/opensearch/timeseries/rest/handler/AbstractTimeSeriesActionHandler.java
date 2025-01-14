@@ -40,6 +40,7 @@ import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.action.support.replication.ReplicationResponse;
+import org.opensearch.ad.model.AnomalyDetector;
 import org.opensearch.ad.transport.IndexAnomalyDetectorResponse;
 import org.opensearch.client.Client;
 import org.opensearch.cluster.service.ClusterService;
@@ -428,26 +429,33 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                                 if (createConfigResponse instanceof IndexAnomalyDetectorResponse) {
                                     String detectorId = ((IndexAnomalyDetectorResponse) createConfigResponse).getId();
                                     String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId.toLowerCase();
+                                    String pipelineId = "anomaly_detection_ingest_pipeline_" + detectorId.toLowerCase();
 
                                     // Initialize the flattened result index
-                                    timeSeriesIndices.initFlattenedResultIndex(indexName,
-                                            ActionListener
-                                                    .wrap(
-                                                            initResponse -> setupIngestPipeline(detectorId, listener),
-                                                            exception -> listener.onFailure(exception)
+                                    timeSeriesIndices.initFlattenedResultIndex(indexName, ActionListener.wrap(
+                                            initResponse -> setupIngestPipeline(detectorId, ActionListener.wrap(
+                                                    pipelineResponse -> {
+                                                        // Update result index setting
+                                                        updateResultIndexSetting(pipelineId, indexName, ActionListener.wrap(
+                                                                updateResponse -> listener.onResponse(createConfigResponse),
+                                                                listener::onFailure
                                                         ));
+                                                    },
+                                                    listener::onFailure
+                                            )),
+                                            listener::onFailure
+                                    ));
                                 } else {
                                     listener.onFailure(new IllegalStateException("Unexpected response type: " +
                                             createConfigResponse.getClass().getName()));
-                                    return;
                                 }
                             } else {
-                                // flatten result index is not enabled
-                                return;
+                                // Flatten result index is not enabled, return the createConfigResponse
+                                listener.onResponse(createConfigResponse);
                             }
                         } else {
                             // No custom result index or alias, return the createConfigResponse
-                            return;
+                            listener.onResponse(createConfigResponse);
                         }
                     },
                     // Handle createConfig failure
@@ -456,16 +464,9 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         }
     }
 
-
     protected void setupIngestPipeline(String detectorId, ActionListener<T> listener) {
-        System.out.println("in setupIngestPipeline");
-
         String indexName = config.getCustomResultIndexOrAlias() + "_flattened_" + detectorId.toLowerCase();
-        System.out.println("flattened result index name111: " + indexName);
-
         String pipelineId = "anomaly_detection_ingest_pipeline_" + detectorId.toLowerCase();
-
-        System.out.println("pipelineId: " + pipelineId);
 
         try {
             XContentBuilder pipelineBuilder = XContentFactory.jsonBuilder();
@@ -494,59 +495,61 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
 
             PutPipelineRequest putPipelineRequest = new PutPipelineRequest(pipelineId, pipelineSource, XContentType.JSON);
 
-            client.admin().cluster().putPipeline(putPipelineRequest, new ActionListener<>() {
-                @Override
-                public void onResponse(AcknowledgedResponse response) {
-                    if (response.isAcknowledged()) {
-                        try {
-                            // update index setting
-                            updateResultIndexSetting(pipelineId, indexName, listener);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
+            client.admin().cluster().putPipeline(putPipelineRequest, ActionListener.wrap(
+                    response -> {
+                        if (response.isAcknowledged()) {
+                            logger.info("Ingest pipeline created successfully for pipelineId: {}", pipelineId);
+                            // Notify success and move to the next step in the chain
+                            listener.onResponse(null);
+                        } else {
+                            String errorMessage = "Ingest pipeline creation was not acknowledged for pipelineId: " + pipelineId;
+                            logger.error(errorMessage);
+                            listener.onFailure(new OpenSearchStatusException(errorMessage, RestStatus.INTERNAL_SERVER_ERROR));
                         }
-                        logger.info("Ingest pipeline created successfully for pipelineId: {}", pipelineId);
-                    } else {
-                        logger.error("Failed to create ingest pipeline for pipelineId: {}", pipelineId);
-                        listener
-                            .onFailure(
-                                new OpenSearchStatusException(
-                                    "Ingest pipeline creation was not acknowledged for pipelineId: " + pipelineId,
-                                    RestStatus.INTERNAL_SERVER_ERROR
-                                )
-                            );
+                    },
+                    exception -> {
+                        logger.error("Error while creating ingest pipeline for pipelineId: {}", pipelineId, exception);
+                        listener.onFailure(exception); // Notify failure
                     }
-                }
-
-                @Override
-                public void onFailure(Exception e) {
-                    logger.error("Error while creating ingest pipeline for pipelineId: {}", pipelineId, e);
-                    listener.onFailure(e);
-                }
-            });
+            ));
         } catch (IOException e) {
             logger.error("Exception while building ingest pipeline definition for pipeline ID: {}", pipelineId, e);
-            listener.onFailure(e);
+            listener.onFailure(e); // Notify failure
         }
     }
 
+
     protected void updateResultIndexSetting(String pipelineId, String flattenedResultIndex, ActionListener<T> listener) throws IOException {
         UpdateSettingsRequest updateSettingsRequest = new UpdateSettingsRequest();
-        // update the flattened result index, bind the ingest pipeline with it
+        // Bind the ingest pipeline to the flattened result index
         updateSettingsRequest.indices(flattenedResultIndex);
 
         Settings.Builder settingsBuilder = Settings.builder();
         settingsBuilder.put("index.default_pipeline", pipelineId);
 
         updateSettingsRequest.settings(settingsBuilder);
-        client.admin().indices().updateSettings(updateSettingsRequest, ActionListener.wrap(response -> {
-            logger.info("Flattened custom result index settings updated successfully for index or alias: {} "
-                                        + "with default ingest pipeline: {}",
-                                flattenedResultIndex,
-                                pipelineId
-                        );
-            listener.onResponse(null);
-        }, listener::onFailure));
+
+        client.admin().indices().updateSettings(updateSettingsRequest, ActionListener.wrap(
+                response -> {
+                    if (response.isAcknowledged()) {
+                        // Successfully updated the settings; notify the listener to continue the chain
+                        logger.info("Successfully updated settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId);
+                        listener.onResponse(null);
+                    } else {
+                        // If the update was not acknowledged, treat it as a failure
+                        String errorMsg = "Settings update not acknowledged for index: " + flattenedResultIndex;
+                        logger.error(errorMsg);
+                        listener.onFailure(new OpenSearchStatusException(errorMsg, RestStatus.INTERNAL_SERVER_ERROR));
+                    }
+                },
+                exception -> {
+                    // Log the error and notify the listener of the failure
+                    logger.error("Failed to update settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId, exception);
+                    listener.onFailure(exception);
+                }
+        ));
     }
+
 
     private void handleFlattenResultIndexMappingUpdate(ActionListener<T> listener) {
         if (config.getCustomResultIndexOrAlias() == null) {
