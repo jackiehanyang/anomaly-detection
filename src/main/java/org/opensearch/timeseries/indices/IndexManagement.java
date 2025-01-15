@@ -1013,16 +1013,20 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         }
     }
 
+    /**
+     * creates flattened result index
+     * @param indexName the index name
+     * @param actionListener the action listener
+     * @throws IOException
+     */
     public void initFlattenedResultIndex(String indexName, ActionListener<CreateIndexResponse> actionListener) throws IOException {
         logger.info("Initializing flattened result index: {}", indexName);
 
-        // Create a request with the flattened result index mappings and settings
         CreateIndexRequest request = new CreateIndexRequest(indexName)
                 .mapping(getFlattenedResultIndexMappings(), XContentType.JSON)
                 .settings(settings);
         choosePrimaryShards(request, false);
 
-        // Execute the index creation request
         adminClient.indices().create(request, ActionListener.wrap(
                 response -> {
                     if (response.isAcknowledged()) {
@@ -1041,12 +1045,9 @@ public abstract class IndexManagement<IndexType extends Enum<IndexType> & TimeSe
         ));
     }
 
-
-
-
     /**
-     * Get flattened reuslt index mapping json content
-     * @return
+     * Get flattened result index mapping json content
+     * @return flattened result index mapping
      * @throws IOException
      */
     public String getFlattenedResultIndexMappings() throws IOException {

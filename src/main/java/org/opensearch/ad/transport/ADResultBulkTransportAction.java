@@ -16,33 +16,22 @@ import static org.opensearch.ad.settings.AnomalyDetectorSettings.AD_INDEX_PRESSU
 import static org.opensearch.common.xcontent.XContentFactory.jsonBuilder;
 
 import java.io.IOException;
-import java.lang.reflect.ParameterizedType;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.index.IndexRequest;
-import org.opensearch.action.search.SearchRequest;
-import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.ad.constant.ADCommonName;
 import org.opensearch.ad.model.AnomalyResult;
 import org.opensearch.ad.ratelimit.ADResultWriteRequest;
 import org.opensearch.client.Client;
-import org.opensearch.client.RequestOptions;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.index.IndexingPressure;
-import org.opensearch.index.query.QueryBuilders;
-import org.opensearch.search.SearchHit;
-import org.opensearch.search.builder.SearchSourceBuilder;
-import org.opensearch.timeseries.constant.CommonName;
 import org.opensearch.timeseries.transport.ResultBulkTransportAction;
 import org.opensearch.timeseries.util.RestHandlerUtils;
 import org.opensearch.transport.TransportService;
@@ -80,6 +69,39 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
         clusterService.getClusterSettings().addSettingsUpdateConsumer(AD_INDEX_PRESSURE_HARD_LIMIT, it -> hardLimit = it);
     }
 
+    /**
+     * Prepares a {@link BulkRequest} for indexing anomaly detection results.
+     *
+     * This method processes a list of anomaly detection results provided in the {@link ADResultBulkRequest}.
+     * Each result is evaluated based on the current indexing pressure and result priority. If a flattened
+     * result index exists for the result, the result is also added to the flattened index.
+     *
+     * @param indexingPressurePercent the current percentage of indexing pressure. This value influences
+     *                                whether a result is indexed based on predefined thresholds and probabilities.
+     * @param request                 the {@link ADResultBulkRequest} containing anomaly detection results
+     *                                to be processed.
+     * @return a {@link BulkRequest} containing all results that are eligible for indexing.
+     *
+     * <p><b>Behavior:</b></p>
+     * <ul>
+     *     <li>Results are added to the bulk request if the indexing pressure is within acceptable limits
+     *         or the result has high priority.</li>
+     *     <li>If a flattened result index exists for a result, it is added to the flattened index in addition
+     *         to the primary index.</li>
+     * </ul>
+     *
+     * <p><b>Indexing Pressure Thresholds:</b></p>
+     * <ul>
+     *     <li>Below the soft limit: All results are added.</li>
+     *     <li>Between the soft limit and the hard limit: High-priority results are always added, and
+     *         other results are added based on a probability that decreases with increasing pressure.</li>
+     *     <li>Above the hard limit: Only high-priority results are added.</li>
+     * </ul>
+     *
+     * @see ADResultBulkRequest
+     * @see BulkRequest
+     * @see ADResultWriteRequest
+     */
     @Override
     protected BulkRequest prepareBulkRequest(float indexingPressurePercent, ADResultBulkRequest request) {
         BulkRequest bulkRequest = new BulkRequest();
@@ -89,7 +111,6 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
             AnomalyResult result = resultWriteRequest.getResult();
             String resultIndex = resultWriteRequest.getResultIndex();
 
-            // Add result based on indexing pressure
             if (shouldAddResult(indexingPressurePercent, result)) {
                 addResult(bulkRequest, result, resultIndex);
                 addToFlattenedIndexIfExists(bulkRequest, result, resultIndex);
@@ -99,9 +120,6 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
         return bulkRequest;
     }
 
-    /**
-     * Determines whether a result should be added based on indexing pressure and result priority.
-     */
     private boolean shouldAddResult(float indexingPressurePercent, AnomalyResult result) {
         if (indexingPressurePercent <= softLimit) {
             // Always add when below soft limit
@@ -116,20 +134,11 @@ public class ADResultBulkTransportAction extends ResultBulkTransportAction<Anoma
         }
     }
 
-    /**
-     * Adds the result to a flattened index if the flattened index exists.
-     */
     private void addToFlattenedIndexIfExists(BulkRequest bulkRequest, AnomalyResult result, String resultIndex) {
         String flattenedResultIndexName = resultIndex + "_flattened_" + result.getDetectorId().toLowerCase();
-        System.out.println("ADResultBulkTransportAction 111: " + flattenedResultIndexName);
-        if (doesFlattenedResultIndexExist(flattenedResultIndexName)) {
-            System.out.println("ADResultBulkTransportAction 113: exist");
+        if (clusterService.state().metadata().hasIndex(flattenedResultIndexName)) {
             addResult(bulkRequest, result, flattenedResultIndexName);
         }
-    }
-
-    private boolean doesFlattenedResultIndexExist(String indexName) {
-        return clusterService.state().metadata().hasIndex(indexName);
     }
 
     private void addResult(BulkRequest bulkRequest, AnomalyResult result, String resultIndex) {
