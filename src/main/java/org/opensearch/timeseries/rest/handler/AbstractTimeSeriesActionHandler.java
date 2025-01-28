@@ -610,9 +610,9 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 && existingConfig.getCustomResultIndexOrAlias() != null
         ) {
             listener
-                    .onFailure(
-                            new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST)
-                    );
+                .onFailure(
+                    new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST)
+                );
             return;
         }
     }
