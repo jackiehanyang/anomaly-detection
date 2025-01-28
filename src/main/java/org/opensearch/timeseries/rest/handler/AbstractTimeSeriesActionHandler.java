@@ -664,6 +664,16 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         );
                     return;
                 }
+                if (Boolean.FALSE.equals(existingConfig.getFlattenResultIndexMapping())
+                        && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
+                        && existingConfig.getCustomResultIndexOrAlias() != null) {
+                    System.out.println("here flatten: " + existingConfig.getFlattenResultIndexMapping());
+
+                    System.out.println("here new flatten: " + config.getFlattenResultIndexMapping());
+
+                    listener.onFailure(new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST));
+                    return;
+                }
             } else {
                 if (!ParseUtils.listEqualsWithoutConsideringOrder(existingConfig.getCategoryFields(), config.getCategoryFields())
                     || !Objects.equals(existingConfig.getCustomResultIndexOrAlias(), config.getCustomResultIndexOrAlias())) {

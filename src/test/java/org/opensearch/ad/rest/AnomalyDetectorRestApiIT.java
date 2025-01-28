@@ -461,28 +461,28 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
         System.out.println("new flatten: " + newDetector.getFlattenResultIndexMapping());
         System.out.println("new result index: " + newDetector.getCustomResultIndexOrAlias());
 
-//        Exception ex = expectThrows(
-//            ResponseException.class,
-//            () -> TestHelpers
-//                .makeRequest(
-//                    client(),
-//                    "PUT",
-//                    TestHelpers.AD_BASE_DETECTORS_URI + "/" + id + "?refresh=true",
-//                    ImmutableMap.of(),
-//                    TestHelpers.toHttpEntity(newDetector),
-//                    null
-//                )
-//        );
-//        assertThat(ex.getMessage(), containsString(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX));
-        TestHelpers
+        Exception ex = expectThrows(
+            ResponseException.class,
+            () -> TestHelpers
                 .makeRequest(
-                        client(),
-                        "PUT",
-                        TestHelpers.AD_BASE_DETECTORS_URI + "/" + id + "?refresh=true",
-                        ImmutableMap.of(),
-                        TestHelpers.toHttpEntity(newDetector),
-                        null
-                );
+                    client(),
+                    "PUT",
+                    TestHelpers.AD_BASE_DETECTORS_URI + "/" + id + "?refresh=true",
+                    ImmutableMap.of(),
+                    TestHelpers.toHttpEntity(newDetector),
+                    null
+                )
+        );
+        assertThat(ex.getMessage(), containsString(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX));
+//        TestHelpers
+//                .makeRequest(
+//                        client(),
+//                        "PUT",
+//                        TestHelpers.AD_BASE_DETECTORS_URI + "/" + id + "?refresh=true",
+//                        ImmutableMap.of(),
+//                        TestHelpers.toHttpEntity(newDetector),
+//                        null
+//                );
     }
 
     public void testUpdateAnomalyDetectorCategoryField() throws Exception {
