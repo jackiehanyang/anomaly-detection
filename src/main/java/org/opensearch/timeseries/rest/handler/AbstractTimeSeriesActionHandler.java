@@ -611,7 +611,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                     }
                 }
             });
-        } else if (Boolean.FALSE.equals(existingConfig.getFlattenResultIndexMapping())
+        } else if (Boolean.FALSE.equals(Boolean.valueOf(existingConfig.getFlattenResultIndexMapping()))
             && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
             && existingConfig.getCustomResultIndexOrAlias() != null) {
             System.out.println("here flatten: " + existingConfig.getFlattenResultIndexMapping());
@@ -662,12 +662,6 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         .onFailure(
                             new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_CUSTOM_RESULT_INDEX, RestStatus.BAD_REQUEST)
                         );
-                    return;
-                }
-                if (Boolean.FALSE.equals(Boolean.valueOf(existingConfig.getFlattenResultIndexMapping()))
-                        && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
-                        && existingConfig.getCustomResultIndexOrAlias() != null) {
-                    listener.onFailure(new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST));
                     return;
                 }
             } else {
