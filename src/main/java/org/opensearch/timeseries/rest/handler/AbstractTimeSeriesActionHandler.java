@@ -22,6 +22,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.action.admin.cluster.settings.ClusterUpdateSettingsResponse;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsAction;
 import org.opensearch.action.admin.indices.mapping.get.GetFieldMappingsRequest;
@@ -490,19 +491,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         logger.info("Flattened result index initialized successfully: {}", flattenedResultIndexAlias);
 
                         // Step 3: Set up the ingest pipeline
-                        setupIngestPipeline(configId, ActionListener.wrap(
-                                acknowledgedResponse -> {
-                                    logger.info("Ingest pipeline setup successfully for config ID: {}", configId);
-
-                                    // Step 4: Update the result index settings with the pipeline ID
-                                    String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(configId);
-                                    updateResultIndexSetting(pipelineId, flattenedResultIndexAlias, listener);
-                                },
-                                e -> {
-                                    logger.error("Failed to set up ingest pipeline for config ID: {}", configId, e);
-                                    listener.onFailure(e);
-                                }
-                        ));
+                        setupIngestPipeline(configId, listener);
                     },
                     e -> {
                         logger.error("Failed to initialize flattened result index: {}", flattenedResultIndexAlias, e);
@@ -526,7 +515,10 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
 
             PutPipelineRequest putPipelineRequest = new PutPipelineRequest(pipelineId, pipelineSource, XContentType.JSON);
 
-            client.admin().cluster().putPipeline(putPipelineRequest, (ActionListener<AcknowledgedResponse>) listener);
+            client.admin().cluster().putPipeline(putPipelineRequest, ActionListener.wrap(
+                    response -> updateResultIndexSetting(pipelineId, flattenedResultIndexAlias, listener),
+                    exception -> listener.onFailure(exception)
+            ));
         } catch (IOException e) {
             logger.error("Exception while building ingest pipeline definition for pipeline ID: {}", pipelineId, e);
             listener.onFailure(e);
@@ -567,7 +559,17 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
 
         updateSettingsRequest.settings(settingsBuilder);
 
-        client.admin().indices().updateSettings(updateSettingsRequest, (ActionListener<AcknowledgedResponse>) listener);
+        client.admin().indices().updateSettings(updateSettingsRequest, new ActionListener<AcknowledgedResponse>() {
+            @Override
+            public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                listener.onResponse((T) acknowledgedResponse);
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                listener.onFailure(e);
+            }
+        });
     }
 
     private void handleFlattenResultIndexMappingUpdate(Config existingConfig, ActionListener<T> listener) {
