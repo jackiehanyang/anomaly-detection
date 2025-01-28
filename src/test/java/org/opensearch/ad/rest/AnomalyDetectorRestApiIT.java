@@ -406,6 +406,64 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
         assertTrue("incorrect version", version > 0);
     }
 
+    public void testUpdateAnomalyDetectorFlattenResultIndexField() throws Exception {
+        AnomalyDetector detector = createIndexAndGetAnomalyDetector(
+                INDEX_NAME,
+                ImmutableList.of(TestHelpers.randomFeature("feature_bytes", "agg", true)),
+                false,
+                false
+        );
+        Response response = TestHelpers
+                .makeRequest(client(), "POST", TestHelpers.AD_BASE_DETECTORS_URI, ImmutableMap.of(), TestHelpers.toHttpEntity(detector), null);
+        assertEquals("Create anomaly detector failed", RestStatus.CREATED, TestHelpers.restStatus(response));
+        Map<String, Object> responseMap = entityAsMap(response);
+        String id = (String) responseMap.get("_id");
+        List<Feature> features = detector.getFeatureAttributes();
+        long expectedFeatures = features.stream().filter(Feature::getEnabled).count();
+        AnomalyDetector newDetector = new AnomalyDetector(
+                id,
+                null,
+                detector.getName(),
+                detector.getDescription(),
+                detector.getTimeField(),
+                detector.getIndices(),
+                features,
+                detector.getFilterQuery(),
+                detector.getInterval(),
+                detector.getWindowDelay(),
+                detector.getShingleSize(),
+                detector.getUiMetadata(),
+                detector.getSchemaVersion(),
+                detector.getLastUpdateTime(),
+                detector.getCategoryFields(),
+                detector.getUser(),
+                detector.getCustomResultIndexOrAlias(),
+                TestHelpers.randomImputationOption(features),
+                randomIntBetween(1, 10000),
+                randomInt(TimeSeriesSettings.MAX_SHINGLE_SIZE / 2),
+                randomIntBetween(1, 1000),
+                detector.getRules(),
+                null,
+                null,
+                null,
+                true,
+                detector.getLastBreakingUIChangeTime()
+        );
+        Exception ex = expectThrows(
+                ResponseException.class,
+                () -> TestHelpers
+                        .makeRequest(
+                                client(),
+                                "PUT",
+                                TestHelpers.AD_BASE_DETECTORS_URI + "/" + id + "?refresh=true",
+                                ImmutableMap.of(),
+                                TestHelpers.toHttpEntity(newDetector),
+                                null
+                        )
+        );
+        assertThat(ex.getMessage(), containsString(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX));
+    }
+
     public void testUpdateAnomalyDetectorCategoryField() throws Exception {
         AnomalyDetector detector = createIndexAndGetAnomalyDetector(INDEX_NAME);
         Response response = TestHelpers
