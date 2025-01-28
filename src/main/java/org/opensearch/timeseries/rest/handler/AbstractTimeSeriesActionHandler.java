@@ -609,20 +609,11 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
                 && existingConfig.getCustomResultIndexOrAlias() != null
         ) {
-            String flattenedResultIndexAlias = timeSeriesIndices
-                    .getFlattenedResultIndexAlias(config.getCustomResultIndexOrAlias(), config.getId());
-            String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(config.getId());
-            timeSeriesIndices
-                    .initFlattenedResultIndex(
-                            flattenedResultIndexAlias,
-                            ActionListener.wrap(initResponse -> setupIngestPipeline(config.getId(), ActionListener.wrap(pipelineResponse -> {
-                                updateResultIndexSetting(
-                                        pipelineId,
-                                        flattenedResultIndexAlias,
-                                        ActionListener.wrap(updateResponse -> listener.onResponse(updateResponse), listener::onFailure)
-                                );
-                            }, listener::onFailure)), listener::onFailure)
+            listener
+                    .onFailure(
+                            new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST)
                     );
+            return;
         }
     }
 
