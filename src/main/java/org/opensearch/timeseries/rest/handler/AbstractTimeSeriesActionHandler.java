@@ -463,21 +463,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         createConfig(indexingDryRun, ActionListener.wrap(createConfigResponse -> {
             if (shouldHandleFlattening(indexingDryRun)) {
                 String configId = RestHandlerUtils.getConfigIdFromIndexResponse(createConfigResponse);
-                String flattenedResultIndexAlias = timeSeriesIndices
-                    .getFlattenedResultIndexAlias(config.getCustomResultIndexOrAlias(), configId);
-                String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(configId);
-
-                timeSeriesIndices
-                    .initFlattenedResultIndex(
-                        flattenedResultIndexAlias,
-                        ActionListener.wrap(initResponse -> setupIngestPipeline(configId, ActionListener.wrap(pipelineResponse -> {
-                            updateResultIndexSetting(
-                                pipelineId,
-                                flattenedResultIndexAlias,
-                                ActionListener.wrap(updateResponse -> listener.onResponse(createConfigResponse), listener::onFailure)
-                            );
-                        }, listener::onFailure)), listener::onFailure)
-                    );
+                initializePipelineAndUpdateIndex(configId, listener);
             } else {
                 listener.onResponse(createConfigResponse);
             }
@@ -490,6 +476,47 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         return !indexingDryRun && config.getCustomResultIndexOrAlias() != null && Boolean.TRUE.equals(flattenResultIndexMapping);
     }
 
+    public void initializePipelineAndUpdateIndex(String configId, ActionListener<T> listener) {
+        try {
+            // Step 1: Get the flattened result index alias
+            String flattenedResultIndexAlias = timeSeriesIndices.getFlattenedResultIndexAlias(
+                    config.getCustomResultIndexOrAlias(),
+                    configId
+            );
+
+            // Step 2: Initialize the flattened result index
+            timeSeriesIndices.initFlattenedResultIndex(flattenedResultIndexAlias, ActionListener.wrap(
+                    createIndexResponse -> {
+                        logger.info("Flattened result index initialized successfully: {}", flattenedResultIndexAlias);
+
+                        // Step 3: Set up the ingest pipeline
+                        setupIngestPipeline(configId, ActionListener.wrap(
+                                acknowledgedResponse -> {
+                                    logger.info("Ingest pipeline setup successfully for config ID: {}", configId);
+
+                                    // Step 4: Update the result index settings with the pipeline ID
+                                    String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(configId);
+                                    updateResultIndexSetting(pipelineId, flattenedResultIndexAlias, listener);
+                                },
+                                e -> {
+                                    logger.error("Failed to set up ingest pipeline for config ID: {}", configId, e);
+                                    listener.onFailure(e);
+                                }
+                        ));
+                    },
+                    e -> {
+                        logger.error("Failed to initialize flattened result index: {}", flattenedResultIndexAlias, e);
+                        listener.onFailure(e);
+                    }
+            ));
+        } catch (Exception e) {
+            // Handle unexpected exceptions
+            logger.error("Error during pipeline and index initialization for config ID: {}", configId, e);
+            listener.onFailure(e);
+        }
+    }
+
+
     protected void setupIngestPipeline(String configId, ActionListener<T> listener) {
         String flattenedResultIndexAlias = timeSeriesIndices.getFlattenedResultIndexAlias(config.getCustomResultIndexOrAlias(), configId);
         String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(configId);
@@ -499,20 +526,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
 
             PutPipelineRequest putPipelineRequest = new PutPipelineRequest(pipelineId, pipelineSource, XContentType.JSON);
 
-            client.admin().cluster().putPipeline(putPipelineRequest, ActionListener.wrap(response -> {
-                if (response.isAcknowledged()) {
-                    logger.info("Ingest pipeline created successfully for pipelineId: {}", pipelineId);
-                    listener.onResponse(null);
-                } else {
-                    String errorMessage = "Ingest pipeline creation was not acknowledged for pipelineId: " + pipelineId;
-                    logger.error(errorMessage);
-                    listener.onFailure(new OpenSearchStatusException(errorMessage, RestStatus.INTERNAL_SERVER_ERROR));
-                }
-            }, exception -> {
-                logger.error("Error while creating ingest pipeline for pipelineId: {}", pipelineId, exception);
-                listener.onFailure(exception);
-            }));
-
+            client.admin().cluster().putPipeline(putPipelineRequest, (ActionListener<AcknowledgedResponse>) listener);
         } catch (IOException e) {
             logger.error("Exception while building ingest pipeline definition for pipeline ID: {}", pipelineId, e);
             listener.onFailure(e);
@@ -553,19 +567,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
 
         updateSettingsRequest.settings(settingsBuilder);
 
-        client.admin().indices().updateSettings(updateSettingsRequest, ActionListener.wrap(response -> {
-            if (response.isAcknowledged()) {
-                logger.info("Successfully updated settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId);
-                listener.onResponse(null);
-            } else {
-                String errorMsg = "Settings update not acknowledged for index: " + flattenedResultIndex;
-                logger.error(errorMsg);
-                listener.onFailure(new OpenSearchStatusException(errorMsg, RestStatus.INTERNAL_SERVER_ERROR));
-            }
-        }, exception -> {
-            logger.error("Failed to update settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId, exception);
-            listener.onFailure(exception);
-        }));
+        client.admin().indices().updateSettings(updateSettingsRequest, (ActionListener<AcknowledgedResponse>) listener);
     }
 
     private void handleFlattenResultIndexMappingUpdate(Config existingConfig, ActionListener<T> listener) {
@@ -577,7 +579,6 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 && existingConfig.getCustomResultIndexOrAlias() != null) {
             String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(config.getId());
             client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
-
                 @Override
                 public void onResponse(AcknowledgedResponse acknowledgedResponse) {
                     if (acknowledgedResponse.isAcknowledged()) {
@@ -609,20 +610,7 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                 && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
                 && existingConfig.getCustomResultIndexOrAlias() != null
         ) {
-            String flattenedResultIndexAlias = timeSeriesIndices
-                    .getFlattenedResultIndexAlias(config.getCustomResultIndexOrAlias(), config.getId());
-            String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(config.getId());
-            timeSeriesIndices
-                    .initFlattenedResultIndex(
-                            flattenedResultIndexAlias,
-                            ActionListener.wrap(initResponse -> setupIngestPipeline(config.getId(), ActionListener.wrap(pipelineResponse -> {
-                                updateResultIndexSetting(
-                                        pipelineId,
-                                        flattenedResultIndexAlias,
-                                        ActionListener.wrap(updateResponse -> listener.onResponse(updateResponse), listener::onFailure)
-                                );
-                            }, listener::onFailure)), listener::onFailure)
-                    );
+            initializePipelineAndUpdateIndex(config.getId(), listener);
         }
     }
 
