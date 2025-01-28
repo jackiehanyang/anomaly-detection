@@ -578,9 +578,9 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         if (config.getCustomResultIndexOrAlias() == null) {
             return;
         }
-        if (Boolean.TRUE.equals(existingConfig.getFlattenResultIndexMapping())
-            && Boolean.FALSE.equals(config.getFlattenResultIndexMapping())
-            && existingConfig.getCustomResultIndexOrAlias() != null) {
+        if (existingConfig.getFlattenResultIndexMapping()
+                && !config.getFlattenResultIndexMapping()
+                && existingConfig.getCustomResultIndexOrAlias() != null) {
             String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(config.getId());
             client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
 
@@ -591,12 +591,12 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                     } else {
                         logger.error("Failed to delete ingest pipeline for pipelineId: {}", pipelineId);
                         listener
-                            .onFailure(
-                                new OpenSearchStatusException(
-                                    "Ingest pipeline deletion was not acknowledged for pipelineId: " + pipelineId,
-                                    RestStatus.INTERNAL_SERVER_ERROR
-                                )
-                            );
+                                .onFailure(
+                                        new OpenSearchStatusException(
+                                                "Ingest pipeline deletion was not acknowledged for pipelineId: " + pipelineId,
+                                                RestStatus.INTERNAL_SERVER_ERROR
+                                        )
+                                );
                     }
                 }
 
@@ -611,11 +611,11 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                     }
                 }
             });
-        } else if (Boolean.FALSE.equals(Boolean.valueOf(existingConfig.getFlattenResultIndexMapping()))
-            && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
-            && existingConfig.getCustomResultIndexOrAlias() != null) {
-            System.out.println("here flatten: " + existingConfig.getFlattenResultIndexMapping());
+        } else if (!existingConfig.getFlattenResultIndexMapping()
+                && config.getFlattenResultIndexMapping()
+                && existingConfig.getCustomResultIndexOrAlias() != null) {
 
+            System.out.println("here flatten: " + existingConfig.getFlattenResultIndexMapping());
             System.out.println("here new flatten: " + config.getFlattenResultIndexMapping());
 
             listener.onFailure(new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST));

@@ -746,8 +746,8 @@ public abstract class Config implements Writeable, ToXContentObject {
         return customResultIndexTTL;
     }
 
-    public Boolean getFlattenResultIndexMapping() {
-        return flattenResultIndexMapping;
+    public boolean getFlattenResultIndexMapping() {
+        return flattenResultIndexMapping != null ? flattenResultIndexMapping : false;
     }
 
     public Instant getLastBreakingUIChangeTime() {
