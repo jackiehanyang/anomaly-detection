@@ -407,6 +407,9 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
     }
 
     public void testUpdateAnomalyDetectorFlattenResultIndexField() throws Exception {
+        TestHelpers.createIndexWithTimeField(client(), INDEX_NAME, TIME_FIELD, false);
+        String testIndexData = "{\"keyword-field\": \"field-1\", \"ip-field\": \"1.2.3.4\", \"timestamp\": 1}";
+        TestHelpers.ingestDataToIndex(client(), INDEX_NAME, TestHelpers.toHttpEntity(testIndexData));
         AnomalyDetector detector = TestHelpers.randomDetector(
             ImmutableList.of(TestHelpers.randomFeature("feature_bytes", "agg", true)),
             INDEX_NAME,
