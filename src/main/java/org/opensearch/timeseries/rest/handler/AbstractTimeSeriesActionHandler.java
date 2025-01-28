@@ -37,7 +37,6 @@ import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.WriteRequest;
-import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.action.support.replication.ReplicationResponse;
 import org.opensearch.client.Client;
 import org.opensearch.cluster.service.ClusterService;
@@ -506,14 +505,8 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             PutPipelineRequest putPipelineRequest = new PutPipelineRequest(pipelineId, pipelineSource, XContentType.JSON);
 
             client.admin().cluster().putPipeline(putPipelineRequest, ActionListener.wrap(response -> {
-                if (response.isAcknowledged()) {
-                    logger.info("Ingest pipeline created successfully for pipelineId: {}", pipelineId);
-                    listener.onResponse(null);
-                } else {
-                    String errorMessage = "Ingest pipeline creation was not acknowledged for pipelineId: " + pipelineId;
-                    logger.error(errorMessage);
-                    listener.onFailure(new OpenSearchStatusException(errorMessage, RestStatus.INTERNAL_SERVER_ERROR));
-                }
+                logger.info("Ingest pipeline created successfully for pipelineId: {}", pipelineId);
+                listener.onResponse(null);
             }, exception -> {
                 logger.error("Error while creating ingest pipeline for pipelineId: {}", pipelineId, exception);
                 listener.onFailure(exception);
@@ -560,14 +553,8 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
         updateSettingsRequest.settings(settingsBuilder);
 
         client.admin().indices().updateSettings(updateSettingsRequest, ActionListener.wrap(response -> {
-            if (response.isAcknowledged()) {
-                logger.info("Successfully updated settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId);
-                listener.onResponse(null);
-            } else {
-                String errorMsg = "Settings update not acknowledged for index: " + flattenedResultIndex;
-                logger.error(errorMsg);
-                listener.onFailure(new OpenSearchStatusException(errorMsg, RestStatus.INTERNAL_SERVER_ERROR));
-            }
+            logger.info("Successfully updated settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId);
+            listener.onResponse(null);
         }, exception -> {
             logger.error("Failed to update settings for index: {} with pipeline: {}", flattenedResultIndex, pipelineId, exception);
             listener.onFailure(exception);
@@ -582,35 +569,13 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             && Boolean.FALSE.equals(config.getFlattenResultIndexMapping())
             && existingConfig.getCustomResultIndexOrAlias() != null) {
             String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(config.getId());
-            client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
-
-                @Override
-                public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                    if (acknowledgedResponse.isAcknowledged()) {
-                        logger.info("Ingest pipeline deleted successfully for pipelineId: {}", pipelineId);
-                    } else {
-                        logger.error("Failed to delete ingest pipeline for pipelineId: {}", pipelineId);
-                        listener
-                            .onFailure(
-                                new OpenSearchStatusException(
-                                    "Ingest pipeline deletion was not acknowledged for pipelineId: " + pipelineId,
-                                    RestStatus.INTERNAL_SERVER_ERROR
-                                )
-                            );
-                    }
-                }
-
-                @Override
-                public void onFailure(Exception e) {
-                    if (e instanceof OpenSearchStatusException && ((OpenSearchStatusException) e).status() == RestStatus.NOT_FOUND) {
-                        logger.info("Ingest pipeline [{}] not found, skipping deletion.", pipelineId);
-                        listener.onResponse(null);
-                    } else {
-                        logger.error("Error while deleting ingest pipeline for pipelineId: {}", pipelineId, e);
-                        listener.onFailure(e);
-                    }
-                }
-            });
+            client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), ActionListener.wrap(response -> {
+                logger.info("Ingest pipeline deleted successfully for pipelineId: {}", pipelineId);
+                listener.onResponse(null);
+            }, exception -> {
+                logger.error("Error while deleting ingest pipeline for pipelineId: {}", pipelineId, exception);
+                listener.onFailure(exception);
+            }));
         } else if (Boolean.FALSE.equals(existingConfig.getFlattenResultIndexMapping())
             && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
             && existingConfig.getCustomResultIndexOrAlias() != null) {
