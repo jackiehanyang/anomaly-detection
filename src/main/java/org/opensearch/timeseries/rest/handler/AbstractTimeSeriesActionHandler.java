@@ -664,13 +664,9 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
                         );
                     return;
                 }
-                if (Boolean.FALSE.equals(existingConfig.getFlattenResultIndexMapping())
+                if (Boolean.FALSE.equals(Boolean.valueOf(existingConfig.getFlattenResultIndexMapping()))
                         && Boolean.TRUE.equals(config.getFlattenResultIndexMapping())
                         && existingConfig.getCustomResultIndexOrAlias() != null) {
-                    System.out.println("here flatten: " + existingConfig.getFlattenResultIndexMapping());
-
-                    System.out.println("here new flatten: " + config.getFlattenResultIndexMapping());
-
                     listener.onFailure(new OpenSearchStatusException(CommonMessages.CAN_NOT_CHANGE_FLATTEN_RESULT_INDEX, RestStatus.BAD_REQUEST));
                     return;
                 }
