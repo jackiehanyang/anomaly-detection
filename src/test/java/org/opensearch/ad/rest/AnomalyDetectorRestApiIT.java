@@ -418,6 +418,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             ADCommonName.CUSTOM_RESULT_INDEX_PREFIX + "test"
         );
+        System.out.println("existing result index: " + detector.getCustomResultIndexOrAlias());
+        System.out.println("existing flatten: " + detector.getFlattenResultIndexMapping());
 
         Response response = TestHelpers
             .makeRequest(client(), "POST", TestHelpers.AD_BASE_DETECTORS_URI, ImmutableMap.of(), TestHelpers.toHttpEntity(detector), null);
@@ -455,6 +457,10 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             true,
             detector.getLastBreakingUIChangeTime()
         );
+
+        System.out.println("new flatten: " + newDetector.getFlattenResultIndexMapping());
+        System.out.println("new result index: " + newDetector.getCustomResultIndexOrAlias());
+
         Exception ex = expectThrows(
             ResponseException.class,
             () -> TestHelpers
