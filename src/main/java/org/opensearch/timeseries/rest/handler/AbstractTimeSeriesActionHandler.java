@@ -583,11 +583,11 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             && existingConfig.getCustomResultIndexOrAlias() != null) {
             String pipelineId = timeSeriesIndices.getFlattenResultIndexIngestPipelineId(config.getId());
             client.admin().cluster().deletePipeline(new DeletePipelineRequest(pipelineId), new ActionListener<AcknowledgedResponse>() {
-
                 @Override
                 public void onResponse(AcknowledgedResponse acknowledgedResponse) {
                     if (acknowledgedResponse.isAcknowledged()) {
                         logger.info("Ingest pipeline deleted successfully for pipelineId: {}", pipelineId);
+                        listener.onResponse(null);
                     } else {
                         logger.error("Failed to delete ingest pipeline for pipelineId: {}", pipelineId);
                         listener
