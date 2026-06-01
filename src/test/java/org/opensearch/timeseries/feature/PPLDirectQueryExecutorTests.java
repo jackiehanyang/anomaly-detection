@@ -21,6 +21,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 
@@ -99,6 +100,23 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
 
         assertNull(listener.failure);
         assertFalse(listener.response.isPresent());
+    }
+
+    public void testExecuteMetricQueryBySpanParsesBucketedMetricValues() throws Exception {
+        clientUtil.response = new RawPPLActionResponse(
+            "{\"datarows\":[[42.5,\"7.25\",\"1970-01-01 00:01:00\"],[null,1,\"1970-01-01 00:02:00\"],[3,4,null],[5,6]]}"
+        );
+        CapturingListener<Map<Long, Optional<double[]>>> listener = new CapturingListener<>();
+
+        executor.executeMetricQueryBySpan(config, 60_000L, 180_000L, AnalysisType.AD, listener);
+
+        assertNull(listener.failure);
+        assertEquals(2, listener.response.size());
+        assertTrue(listener.response.get(60_000L).isPresent());
+        assertArrayEquals(new double[] { 42.5, 7.25 }, listener.response.get(60_000L).get(), 0.001);
+        assertFalse(listener.response.get(120_000L).isPresent());
+        assertSerializedRequestContains(clientUtil.capturedRequest, "by span(timestamp, 1m) as bucket");
+        assertSerializedRequestContains(clientUtil.capturedRequest, "| sort bucket asc");
     }
 
     public void testExecuteMetricQueryFailsOnInvalidMetricValue() {

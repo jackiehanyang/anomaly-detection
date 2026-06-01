@@ -688,7 +688,11 @@ public class SearchFeatureDao extends AbstractRetriever {
         ActionListener<Map<Long, Optional<double[]>>> listener
     ) throws IOException {
         if (isPPLConfig(detector)) {
-            listener.onFailure(new IllegalArgumentException("PPL source_type only supports single-stream detectors."));
+            if (entity != null) {
+                listener.onFailure(new IllegalArgumentException("PPL source_type only supports single-stream detectors."));
+                return;
+            }
+            pplDirectQueryExecutor.executeMetricQueryBySpan(detector, startTime, endTime, AnalysisType.AD, listener);
             return;
         }
 

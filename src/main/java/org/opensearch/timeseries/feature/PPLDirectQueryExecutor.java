@@ -19,7 +19,9 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -91,6 +93,31 @@ public class PPLDirectQueryExecutor {
             compiled -> compiledQuery.buildMetricQueryForRange(startTimeMs, endTimeMs),
             context,
             responseBody -> parseMetricValues(responseBody, compiledQuery.getMetricCount()),
+            listener
+        );
+    }
+
+    public void executeMetricQueryBySpan(
+        Config config,
+        long startTimeMs,
+        long endTimeMs,
+        AnalysisType context,
+        ActionListener<Map<Long, Optional<double[]>>> listener
+    ) {
+        final PPLSource.CompiledPPLQuery compiledQuery;
+        try {
+            compiledQuery = config.getPPLSource().compile();
+        } catch (IllegalArgumentException e) {
+            listener.onFailure(e);
+            return;
+        }
+
+        executeQuery(
+            null,
+            config,
+            compiled -> compiledQuery.buildMetricQueryForRangeBySpan(startTimeMs, endTimeMs),
+            context,
+            responseBody -> parseMetricValuesBySpan(responseBody, compiledQuery.getMetricCount()),
             listener
         );
     }
@@ -192,9 +219,37 @@ public class PPLDirectQueryExecutor {
             return Optional.empty();
         }
 
+        return parseMetricRow(firstRow, metricCount);
+    }
+
+    private static Map<Long, Optional<double[]>> parseMetricValuesBySpan(String responseBody, int metricCount) throws IOException {
+        Map<Long, Optional<double[]>> valuesByBucket = new HashMap<>();
+        JsonNode datarows = OBJECT_MAPPER.readTree(responseBody).path("datarows");
+        if (!datarows.isArray() || datarows.isEmpty()) {
+            return valuesByBucket;
+        }
+
+        for (JsonNode row : datarows) {
+            if (!row.isArray() || row.size() <= metricCount) {
+                continue;
+            }
+            Optional<Long> bucketTime = parseTimestampValue(row.get(metricCount));
+            if (bucketTime.isEmpty()) {
+                continue;
+            }
+            valuesByBucket.put(bucketTime.get(), parseMetricRow(row, metricCount));
+        }
+        return valuesByBucket;
+    }
+
+    private static Optional<double[]> parseMetricRow(JsonNode row, int metricCount) {
+        if (!row.isArray() || row.size() < metricCount) {
+            return Optional.empty();
+        }
+
         double[] values = new double[metricCount];
         for (int i = 0; i < metricCount; i++) {
-            JsonNode valueNode = firstRow.get(i);
+            JsonNode valueNode = row.get(i);
             if (valueNode == null || valueNode.isNull()) {
                 return Optional.empty();
             }

@@ -687,6 +687,30 @@ public class PPLSource implements Writeable, ToXContentObject {
             );
         }
 
+        public String buildMetricQueryForRangeBySpan(long startTimeMs, long endTimeMs) {
+            List<String> metricsExpressions = new ArrayList<>(metrics.size());
+            for (MetricSpec metric : metrics) {
+                metricsExpressions.add(metric.toStatsExpression());
+            }
+            return buildStatsQuery(
+                String.join(", ", metricsExpressions)
+                    + " by span("
+                    + maybeQuote(timeField)
+                    + ", "
+                    + intervalToPPLLiteral(interval)
+                    + ") as bucket",
+                String
+                    .format(
+                        Locale.ROOT,
+                        "%s >= \"%s\" and %s < \"%s\"",
+                        maybeQuote(timeField),
+                        formatQueryTimestamp(startTimeMs),
+                        maybeQuote(timeField),
+                        formatQueryTimestamp(endTimeMs)
+                    )
+            ) + " | sort bucket asc";
+        }
+
         public String buildLatestTimeQuery() {
             return buildStatsQuery("max(" + maybeQuote(timeField) + ") as latest_time", null);
         }
@@ -714,6 +738,11 @@ public class PPLSource implements Writeable, ToXContentObject {
 
         private static String formatQueryTimestamp(long epochMillis) {
             return QUERY_TIMESTAMP_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
+        }
+
+        private static String intervalToPPLLiteral(IntervalTimeConfiguration interval) {
+            String unit = interval.getUnit() == ChronoUnit.SECONDS ? "s" : "m";
+            return interval.getInterval() + unit;
         }
 
         private static String maybeQuote(String identifier) {

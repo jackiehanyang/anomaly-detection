@@ -58,6 +58,20 @@ public class PPLSourceTests extends OpenSearchTestCase {
         assertTrue(metricQuery.contains("event.time >= \"1970-01-01 00:01:00.000\" and event.time < \"1970-01-01 00:02:00.000\""));
     }
 
+    public void testBuildMetricQueryForRangeBySpanPreservesDetectorSpan() {
+        PPLSource.CompiledPPLQuery compiledQuery = PPLSource
+            .compile(
+                "source = sample-http-responses | where http_4xx >= 0 | stats count() as doc_count, sum(http_4xx) as sum_http_4xx by span(timestamp, 10m) as bucket"
+            );
+
+        String batchQuery = compiledQuery.buildMetricQueryForRangeBySpan(1_000L, 2_000L);
+
+        assertEquals(
+            "source = sample-http-responses | where http_4xx >= 0 | where timestamp >= \"1970-01-01 00:00:01.000\" and timestamp < \"1970-01-01 00:00:02.000\" | stats count() as doc_count, sum(http_4xx) as sum_http_4xx by span(timestamp, 10m) as bucket | sort bucket asc",
+            batchQuery
+        );
+    }
+
     public void testCompileSupportsCountFieldAndQuotedIdentifiers() {
         PPLSource.CompiledPPLQuery compiledQuery = PPLSource
             .compile(

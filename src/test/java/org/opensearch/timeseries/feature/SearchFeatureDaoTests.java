@@ -19,6 +19,7 @@ import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -363,6 +364,82 @@ public class SearchFeatureDaoTests {
         assertTrue(captor.getValue().get(1).isPresent());
         assertTrue(Double.isNaN(captor.getValue().get(1).get()[0]));
         assertTrue(Double.isNaN(captor.getValue().get(1).get()[1]));
+        verify(client, never()).search(any(SearchRequest.class), any(ActionListener.class));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void getFeaturesForPeriodByBatch_usesPPLRuntimeExecutorForSingleStream() throws Exception {
+        PPLDirectQueryExecutor pplDirectQueryExecutor = mock(PPLDirectQueryExecutor.class);
+        SearchFeatureDao pplSearchFeatureDao = new SearchFeatureDao(
+            client,
+            xContent,
+            clientUtil,
+            null,
+            TimeSeriesSettings.NUM_SAMPLES_PER_TREE,
+            clock,
+            1,
+            1,
+            60_000L,
+            pplDirectQueryExecutor
+        );
+        when(detector.getSourceType()).thenReturn(Config.SOURCE_TYPE_PPL);
+        when(detector.getPPLSource())
+            .thenReturn(
+                new PPLSource(
+                    "PPL",
+                    "source = sample-http-responses | stats count() as doc_count, sum(http_4xx) as sum_http_4xx by span(timestamp, 10m) as bucket"
+                )
+            );
+
+        Map<Long, Optional<double[]>> response = new HashMap<>();
+        response.put(100L, Optional.of(new double[] { 4.0, 5.0 }));
+        doAnswer(invocation -> {
+            ActionListener<Map<Long, Optional<double[]>>> listener = invocation.getArgument(4);
+            listener.onResponse(response);
+            return null;
+        })
+            .when(pplDirectQueryExecutor)
+            .executeMetricQueryBySpan(eq(detector), eq(100L), eq(200L), eq(AnalysisType.AD), any(ActionListener.class));
+
+        ActionListener<Map<Long, Optional<double[]>>> listener = mock(ActionListener.class);
+        pplSearchFeatureDao.getFeaturesForPeriodByBatch(detector, null, 100L, 200L, listener);
+
+        verify(listener).onResponse(response);
+        verify(client, never()).search(any(SearchRequest.class), any(ActionListener.class));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void getFeaturesForPeriodByBatch_rejectsPPLRuntimeExecutorForEntity() throws Exception {
+        PPLDirectQueryExecutor pplDirectQueryExecutor = mock(PPLDirectQueryExecutor.class);
+        SearchFeatureDao pplSearchFeatureDao = new SearchFeatureDao(
+            client,
+            xContent,
+            clientUtil,
+            null,
+            TimeSeriesSettings.NUM_SAMPLES_PER_TREE,
+            clock,
+            1,
+            1,
+            60_000L,
+            pplDirectQueryExecutor
+        );
+        when(detector.getSourceType()).thenReturn(Config.SOURCE_TYPE_PPL);
+        when(detector.getPPLSource())
+            .thenReturn(
+                new PPLSource("PPL", "source = sample-http-responses | stats count() as doc_count by span(timestamp, 10m) as bucket")
+            );
+
+        ActionListener<Map<Long, Optional<double[]>>> listener = mock(ActionListener.class);
+        pplSearchFeatureDao
+            .getFeaturesForPeriodByBatch(detector, Entity.createSingleAttributeEntity("service", "checkout"), 100L, 200L, listener);
+
+        ArgumentCaptor<Exception> exceptionCaptor = ArgumentCaptor.forClass(Exception.class);
+        verify(listener).onFailure(exceptionCaptor.capture());
+        assertTrue(exceptionCaptor.getValue().getMessage().contains("PPL source_type only supports single-stream detectors."));
+        verify(pplDirectQueryExecutor, never())
+            .executeMetricQueryBySpan(any(Config.class), anyLong(), anyLong(), any(AnalysisType.class), any(ActionListener.class));
         verify(client, never()).search(any(SearchRequest.class), any(ActionListener.class));
     }
 
