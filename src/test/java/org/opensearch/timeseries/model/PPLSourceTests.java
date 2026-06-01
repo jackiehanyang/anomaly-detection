@@ -11,6 +11,9 @@
 
 package org.opensearch.timeseries.model;
 
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+
 import org.opensearch.test.OpenSearchTestCase;
 
 public class PPLSourceTests extends OpenSearchTestCase {
@@ -112,5 +115,97 @@ public class PPLSourceTests extends OpenSearchTestCase {
         );
         assertTrue(exception.getMessage().contains("before the final stats stage"));
         assertTrue(exception.getMessage().contains("where and eval"));
+    }
+
+    public void testCompileUsesDefaultFeatureNamesAndPlaceholderFeatures() {
+        PPLSource.CompiledPPLQuery compiledQuery = PPLSource
+            .compile("source = logs | stats count(*), max(bytes), min(bytes), avg(bytes), sum(bytes) by span(timestamp, 30s)");
+
+        assertEquals("count_all", compiledQuery.getFeatureNames().get(0));
+        assertEquals("max_bytes", compiledQuery.getFeatureNames().get(1));
+        assertEquals("min_bytes", compiledQuery.getFeatureNames().get(2));
+        assertEquals("avg_bytes", compiledQuery.getFeatureNames().get(3));
+        assertEquals("sum_bytes", compiledQuery.getFeatureNames().get(4));
+        assertEquals(30L, compiledQuery.getInterval().getInterval());
+        assertEquals(ChronoUnit.SECONDS, compiledQuery.getInterval().getUnit());
+
+        List<Feature> features = compiledQuery.toPlaceholderFeatures();
+        assertEquals(5, features.size());
+        assertEquals("count_all", features.get(0).getName());
+        assertTrue(features.get(0).getEnabled());
+        assertTrue(features.get(0).usesDirectQueryPlaceholderAggregation());
+    }
+
+    public void testCompileKeepsPipesAndCommasInsideQuotedPreStatsStages() {
+        PPLSource.CompiledPPLQuery compiledQuery = PPLSource
+            .compile(
+                "source = logs | where message = 'a|b,c' | eval normalized = concat(\"x,y\", `service|name`) | stats count() by span(timestamp, 1m)"
+            );
+
+        assertEquals(2, compiledQuery.getPreStatsStages().size());
+        assertEquals("where message = 'a|b,c'", compiledQuery.getPreStatsStages().get(0));
+        assertEquals("eval normalized = concat(\"x,y\", `service|name`)", compiledQuery.getPreStatsStages().get(1));
+    }
+
+    public void testCompileRejectsBlankQuery() {
+        IllegalArgumentException exception = expectThrows(IllegalArgumentException.class, () -> PPLSource.compile(" "));
+        assertTrue(exception.getMessage().contains("ppl_source.query must be set"));
+    }
+
+    public void testCompileRejectsMissingSourceStage() {
+        IllegalArgumentException exception = expectThrows(
+            IllegalArgumentException.class,
+            () -> PPLSource.compile("stats count() by span(timestamp, 1m)")
+        );
+        assertTrue(exception.getMessage().contains("starts with source"));
+    }
+
+    public void testCompileRejectsMultipleSourceReferences() {
+        IllegalArgumentException exception = expectThrows(
+            IllegalArgumentException.class,
+            () -> PPLSource.compile("source = logs-a,logs-b | stats count() by span(timestamp, 1m)")
+        );
+        assertTrue(exception.getMessage().contains("exactly one index"));
+    }
+
+    public void testCompileRejectsSourceStageBeforeStats() {
+        IllegalArgumentException exception = expectThrows(
+            IllegalArgumentException.class,
+            () -> PPLSource.compile("source = logs-a | source = logs-b | stats count() by span(timestamp, 1m)")
+        );
+        assertTrue(exception.getMessage().contains("exactly one source stage"));
+    }
+
+    public void testCompileRejectsMultipleStatsStages() {
+        IllegalArgumentException exception = expectThrows(
+            IllegalArgumentException.class,
+            () -> PPLSource.compile("source = logs | stats count() by span(timestamp, 1m) | stats count() by span(timestamp, 1m)")
+        );
+        assertTrue(exception.getMessage().contains("Only one final stats stage"));
+    }
+
+    public void testCompileRejectsUnsupportedAggregation() {
+        IllegalArgumentException exception = expectThrows(
+            IllegalArgumentException.class,
+            () -> PPLSource.compile("source = logs | stats median(bytes) as median_bytes by span(timestamp, 1m)")
+        );
+        assertTrue(exception.getMessage().contains("Unsupported aggregation [median]"));
+    }
+
+    public void testCompileRejectsEmptyNonCountAggregationArgument() {
+        IllegalArgumentException exception = expectThrows(
+            IllegalArgumentException.class,
+            () -> PPLSource.compile("source = logs | stats sum() as sum_value by span(timestamp, 1m)")
+        );
+        assertTrue(exception.getMessage().contains("arguments cannot be empty"));
+    }
+
+    public void testCompileRejectsInvalidSpanClauses() {
+        expectThrows(IllegalArgumentException.class, () -> PPLSource.compile("source = logs | stats count() by timestamp"));
+        expectThrows(IllegalArgumentException.class, () -> PPLSource.compile("source = logs | stats count() by span(timestamp)"));
+        expectThrows(IllegalArgumentException.class, () -> PPLSource.compile("source = logs | stats count() by span(timestamp, 0m)"));
+        expectThrows(IllegalArgumentException.class, () -> PPLSource.compile("source = logs | stats count() by span(timestamp, 1h)"));
+        expectThrows(IllegalArgumentException.class, () -> PPLSource.compile("source = logs | stats count() by span(event time, 1m)"));
+        expectThrows(IllegalArgumentException.class, () -> PPLSource.compile("source = logs | stats count() by span(timestamp, 1m) as"));
     }
 }
