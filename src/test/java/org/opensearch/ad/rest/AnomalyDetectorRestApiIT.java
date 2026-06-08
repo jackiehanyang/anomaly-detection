@@ -251,6 +251,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             null,
             interval,
+            null,
+            null,
             null
         );
 
@@ -528,6 +530,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             false,
             detector.getLastBreakingUIChangeTime(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
         Response updateResponse = TestHelpers
@@ -597,6 +601,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             true,
             detector.getLastBreakingUIChangeTime(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -738,6 +744,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             detector.getLastBreakingUIChangeTime(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
         if (isResourceSharingFeatureEnabled()) {
@@ -811,6 +819,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             detector.getLastBreakingUIChangeTime(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -899,6 +909,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             detector1.getLastBreakingUIChangeTime(),
             detector1.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -951,6 +963,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             Instant.now(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -1009,6 +1023,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             detector.getLastBreakingUIChangeTime(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -1517,6 +1533,8 @@ public class AnomalyDetectorRestApiIT extends AnomalyDetectorRestTestCase {
             null,
             detector.getLastBreakingUIChangeTime(),
             detector.getFrequency(),
+            null,
+            null,
             null
         );
 

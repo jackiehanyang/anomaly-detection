@@ -125,7 +125,8 @@ public class HCADModelPerfTests extends AbstractCosineDataTest {
                     clock,
                     1,
                     1,
-                    60_000L
+                    60_000L,
+                    null
                 )
             );
 

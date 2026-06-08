@@ -234,7 +234,14 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         return indexName;
     }
 
-    private void createPPLAccessRole(String role) throws IOException {
+    private void createClusterRole(String role, List<String> clusterPermissions) throws IOException {
+        StringBuilder permissions = new StringBuilder();
+        for (int i = 0; i < clusterPermissions.size(); i++) {
+            if (i > 0) {
+                permissions.append(",\n");
+            }
+            permissions.append("\"").append(clusterPermissions.get(i)).append("\"");
+        }
         TestHelpers
             .makeRequest(
                 client(),
@@ -245,7 +252,8 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
                     .toHttpEntity(
                         "{\n"
                             + "\"cluster_permissions\": [\n"
-                            + "\"cluster:admin/opensearch/ppl\"\n"
+                            + permissions
+                            + "\n"
                             + "],\n"
                             + "\"index_permissions\": [],\n"
                             + "\"tenant_permissions\": []\n"
@@ -253,6 +261,10 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
                     ),
                 ImmutableList.of(new BasicHeader(HttpHeaders.USER_AGENT, "Kibana"))
             );
+    }
+
+    private void createPPLAccessRole(String role) throws IOException {
+        createClusterRole(role, Arrays.asList("cluster:admin/opensearch/ppl"));
     }
 
     private String buildInlinePPLPreviewBody(String indexName, Instant periodStart, Instant periodEnd) {
@@ -697,6 +709,8 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
             null,
             Instant.now(),
             aliceDetector.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -1058,8 +1072,20 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         Exception exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(bobClient, requestBody); });
         Assert.assertTrue(exception.getMessage().contains(noPermsMessage));
 
+        String adPreviewWithoutPPLRole = "ad_preview_without_ppl";
+        createClusterRole(adPreviewWithoutPPLRole, Arrays.asList("cluster:admin/opendistro/ad/detector/preview"));
+        createRoleMapping(adPreviewWithoutPPLRole, new ArrayList<>(Arrays.asList(lionUser)));
         exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(lionClient, requestBody); });
-        Assert.assertTrue(exception.getMessage().contains(noPermsMessage));
+        Assert.assertTrue(exception.getMessage().contains("no permissions for [cluster:admin/opensearch/ppl]"));
+
+        String adPreviewWithPPLRole = "ad_preview_with_ppl";
+        createClusterRole(
+            adPreviewWithPPLRole,
+            Arrays.asList("cluster:admin/opendistro/ad/detector/preview", "cluster:admin/opensearch/ppl")
+        );
+        createRoleMapping(adPreviewWithPPLRole, new ArrayList<>(Arrays.asList(elkUser)));
+        exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(elkClient, requestBody); });
+        Assert.assertTrue(exception.getMessage().contains("no permissions for [indices:data/read/search]"));
     }
 
     public void testValidateAnomalyDetector() throws IOException {

@@ -175,72 +175,6 @@ public abstract class Config implements Writeable, ToXContentObject {
         Boolean flattenResultIndexMapping,
         Instant lastBreakingUIChangeTime,
         TimeConfiguration frequency,
-        Boolean autoCreated
-    ) {
-        this(
-            id,
-            version,
-            name,
-            description,
-            timeField,
-            indices,
-            features,
-            filterQuery,
-            windowDelay,
-            shingleSize,
-            uiMetadata,
-            schemaVersion,
-            lastUpdateTime,
-            categoryFields,
-            user,
-            resultIndex,
-            interval,
-            imputationOption,
-            recencyEmphasis,
-            seasonIntervals,
-            shingleGetter,
-            historyIntervals,
-            customResultIndexMinSize,
-            customResultIndexMinAge,
-            customResultIndexTTL,
-            flattenResultIndexMapping,
-            lastBreakingUIChangeTime,
-            frequency,
-            autoCreated,
-            null,
-            null
-        );
-    }
-
-    protected Config(
-        String id,
-        Long version,
-        String name,
-        String description,
-        String timeField,
-        List<String> indices,
-        List<Feature> features,
-        QueryBuilder filterQuery,
-        TimeConfiguration windowDelay,
-        Integer shingleSize,
-        Map<String, Object> uiMetadata,
-        Integer schemaVersion,
-        Instant lastUpdateTime,
-        List<String> categoryFields,
-        User user,
-        String resultIndex,
-        TimeConfiguration interval,
-        ImputationOption imputationOption,
-        Integer recencyEmphasis,
-        Integer seasonIntervals,
-        ShingleGetter shingleGetter,
-        Integer historyIntervals,
-        Integer customResultIndexMinSize,
-        Integer customResultIndexMinAge,
-        Integer customResultIndexTTL,
-        Boolean flattenResultIndexMapping,
-        Instant lastBreakingUIChangeTime,
-        TimeConfiguration frequency,
         Boolean autoCreated,
         String sourceType,
         PPLSource pplSource
@@ -1190,6 +1124,8 @@ public abstract class Config implements Writeable, ToXContentObject {
             .append("flattenResultIndexMapping", flattenResultIndexMapping)
             .append("frequency", frequency)
             .append("autoCreated", autoCreated)
+            .append("sourceType", sourceType)
+            .append("pplSource", pplSource)
             .toString();
     }
 

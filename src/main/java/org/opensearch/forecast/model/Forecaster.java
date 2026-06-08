@@ -169,7 +169,9 @@ public class Forecaster extends Config {
             flattenResultIndexMapping,
             lastBreakingUIChangeTime,
             frequency,
-            autoCreated
+            autoCreated,
+            null,
+            null
         );
 
         checkAndThrowValidationErrors(ValidationAspect.FORECASTER);

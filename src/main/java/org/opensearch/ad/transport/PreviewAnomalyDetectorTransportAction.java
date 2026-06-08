@@ -111,13 +111,13 @@ public class PreviewAnomalyDetectorTransportAction extends
             // Call the verifyResourceAccessAndProcessRequest method
             verifyResourceAccessAndProcessRequest(
                 ADCommonName.AD_RESOURCE_TYPE,
-                () -> previewExecute(request, context, listener),
+                () -> previewExecute(request, context, user, listener),
                 () -> resolveUserAndExecute(
                     user,
                     detectorId,
                     filterByEnabled,
                     listener,
-                    ad -> previewExecute(request, context, listener),
+                    ad -> previewExecute(request, context, user, listener),
                     client,
                     clusterService,
                     xContentRegistry,
@@ -134,6 +134,7 @@ public class PreviewAnomalyDetectorTransportAction extends
     void previewExecute(
         PreviewAnomalyDetectorRequest request,
         ThreadContext.StoredContext context,
+        User user,
         ActionListener<PreviewAnomalyDetectorResponse> listener
     ) {
         if (adCircuitBreakerService.isOpen()) {
@@ -153,6 +154,9 @@ public class PreviewAnomalyDetectorTransportAction extends
                 Instant endTime = request.getEndTime();
                 ActionListener<PreviewAnomalyDetectorResponse> releaseListener = ActionListener.runAfter(listener, () -> lock.release());
                 if (detector != null) {
+                    if (detector.getUser() == null && user != null) {
+                        detector = copyDetectorWithUser(detector, user);
+                    }
                     String error = validateDetector(detector);
                     if (StringUtils.isNotBlank(error)) {
                         listener.onFailure(new OpenSearchStatusException(error, RestStatus.BAD_REQUEST));
@@ -178,6 +182,44 @@ public class PreviewAnomalyDetectorTransportAction extends
             logger.error(e);
             listener.onFailure(e);
         }
+    }
+
+    private AnomalyDetector copyDetectorWithUser(AnomalyDetector detector, User user) {
+        AnomalyDetector copiedDetector = new AnomalyDetector(
+            detector.getId(),
+            detector.getVersion(),
+            detector.getName(),
+            detector.getDescription(),
+            detector.getTimeField(),
+            detector.getIndices(),
+            detector.getFeatureAttributes(),
+            detector.getFilterQuery(),
+            detector.getInterval(),
+            detector.getWindowDelay(),
+            detector.getShingleSize(),
+            detector.getUiMetadata(),
+            detector.getSchemaVersion(),
+            detector.getLastUpdateTime(),
+            detector.getCategoryFields(),
+            user,
+            detector.getCustomResultIndexOrAlias(),
+            detector.getImputationOption(),
+            detector.getRecencyEmphasis(),
+            detector.getSeasonIntervals(),
+            detector.getHistoryIntervals(),
+            detector.getRules(),
+            detector.getCustomResultIndexMinSize(),
+            detector.getCustomResultIndexMinAge(),
+            detector.getCustomResultIndexTTL(),
+            detector.getFlattenResultIndexMapping(),
+            detector.getLastBreakingUIChangeTime(),
+            detector.getFrequency(),
+            detector.getAutoCreated(),
+            detector.getSourceType(),
+            detector.getPPLSource()
+        );
+        copiedDetector.setDetectionDateRange(detector.getDetectionDateRange());
+        return copiedDetector;
     }
 
     private String validateDetector(AnomalyDetector detector) {

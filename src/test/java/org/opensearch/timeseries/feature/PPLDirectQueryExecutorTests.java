@@ -92,14 +92,16 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertFalse(listener.response.isPresent());
     }
 
-    public void testExecuteMetricQueryReturnsEmptyForNullMetricValue() {
+    public void testExecuteMetricQueryReturnsNaNForNullMetricValue() {
         clientUtil.response = new RawPPLActionResponse("{\"datarows\":[[null,1]]}");
         CapturingListener<Optional<double[]>> listener = new CapturingListener<>();
 
         executor.executeMetricQuery(config, 1_000L, 2_000L, AnalysisType.AD, listener);
 
         assertNull(listener.failure);
-        assertFalse(listener.response.isPresent());
+        assertTrue(listener.response.isPresent());
+        assertTrue(Double.isNaN(listener.response.get()[0]));
+        assertEquals(1.0, listener.response.get()[1], 0.001);
     }
 
     public void testExecuteMetricQueryBySpanParsesBucketedMetricValues() throws Exception {
@@ -114,9 +116,26 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertEquals(2, listener.response.size());
         assertTrue(listener.response.get(60_000L).isPresent());
         assertArrayEquals(new double[] { 42.5, 7.25 }, listener.response.get(60_000L).get(), 0.001);
-        assertFalse(listener.response.get(120_000L).isPresent());
+        assertTrue(listener.response.get(120_000L).isPresent());
+        assertTrue(Double.isNaN(listener.response.get(120_000L).get()[0]));
+        assertEquals(1.0, listener.response.get(120_000L).get()[1], 0.001);
         assertSerializedRequestContains(clientUtil.capturedRequest, "by span(timestamp, 1m) as bucket");
         assertSerializedRequestContains(clientUtil.capturedRequest, "| sort bucket asc");
+    }
+
+    public void testExecuteMetricQueryUsesUserSecurityWhenConfigHasUser() throws Exception {
+        User user = new User("alice", Collections.emptyList(), Collections.singletonList("role"), Collections.emptyList());
+        when(config.getUser()).thenReturn(user);
+        clientUtil.response = new RawPPLActionResponse("{\"datarows\":[[42.5,\"7.25\"]]}");
+        CapturingListener<Optional<double[]>> listener = new CapturingListener<>();
+
+        executor.executeMetricQuery(config, 1_000L, 2_000L, AnalysisType.AD, listener);
+
+        assertNull(listener.failure);
+        assertTrue(listener.response.isPresent());
+        assertEquals(1, clientUtil.userCallCount);
+        assertEquals(user, clientUtil.capturedUser);
+        assertEquals(0, clientUtil.configCallCount);
     }
 
     public void testExecuteMetricQueryFailsOnInvalidMetricValue() {
@@ -167,6 +186,21 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertTrue(listener.response.isPresent());
         assertEquals(12_345L, listener.response.get().longValue());
         assertEquals(1, clientUtil.configCallCount);
+    }
+
+    public void testExecuteMinDataTimeQueryUsesUserSecurityWhenConfigHasUser() {
+        User user = new User("alice", Collections.emptyList(), Collections.singletonList("role"), Collections.emptyList());
+        when(config.getUser()).thenReturn(user);
+        clientUtil.response = new RawPPLActionResponse("{\"datarows\":[[12345]]}");
+        CapturingListener<Optional<Long>> listener = new CapturingListener<>();
+
+        executor.executeMinDataTimeQuery(config, AnalysisType.AD, listener);
+
+        assertNull(listener.failure);
+        assertTrue(listener.response.isPresent());
+        assertEquals(1, clientUtil.userCallCount);
+        assertEquals(user, clientUtil.capturedUser);
+        assertEquals(0, clientUtil.configCallCount);
     }
 
     public void testExecuteDateRangeQueryParsesTextAndNumericTimestamps() {
@@ -233,6 +267,24 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertSame(serializedResponse, directResponse);
     }
 
+    public void testPPLTransportRequestFromActionRequestSupportsSerializedAndDirectRequests() throws Exception {
+        clientUtil.response = new RawPPLActionResponse("{\"datarows\":[[42.5,\"7.25\"]]}");
+        CapturingListener<Optional<double[]>> listener = new CapturingListener<>();
+
+        executor.executeMetricQuery(config, 1_000L, 2_000L, AnalysisType.AD, listener);
+
+        Method fromActionRequest = pplTransportRequestClass().getDeclaredMethod("fromActionRequest", ActionRequest.class);
+        fromActionRequest.setAccessible(true);
+        Object serializedRequest = fromActionRequest.invoke(null, clientUtil.capturedRequest);
+
+        assertEquals(readPrivateField(clientUtil.capturedRequest, "query"), readPrivateField(serializedRequest, "query"));
+        assertEquals(readPrivateField(clientUtil.capturedRequest, "format"), readPrivateField(serializedRequest, "format"));
+        assertEquals(readPrivateField(clientUtil.capturedRequest, "path"), readPrivateField(serializedRequest, "path"));
+        assertEquals(readPrivateField(clientUtil.capturedRequest, "sanitize"), readPrivateField(serializedRequest, "sanitize"));
+        assertEquals(readPrivateField(clientUtil.capturedRequest, "profile"), readPrivateField(serializedRequest, "profile"));
+        assertSame(clientUtil.capturedRequest, fromActionRequest.invoke(null, serializedRequest));
+    }
+
     public void testPPLTransportResponseFromActionResponseFailsOnInvalidSerializedResponse() throws Exception {
         Method fromActionResponse = pplTransportResponseClass().getDeclaredMethod("fromActionResponse", ActionResponse.class);
         fromActionResponse.setAccessible(true);
@@ -253,6 +305,10 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
 
     private static Class<?> pplTransportResponseClass() throws ClassNotFoundException {
         return Class.forName("org.opensearch.timeseries.feature.PPLDirectQueryExecutor$PPLTransportResponse");
+    }
+
+    private static Class<?> pplTransportRequestClass() throws ClassNotFoundException {
+        return Class.forName("org.opensearch.timeseries.feature.PPLDirectQueryExecutor$PPLTransportRequest");
     }
 
     private static void assertSerializedRequestContains(ActionRequest request, String expectedQueryFragment) throws Exception {

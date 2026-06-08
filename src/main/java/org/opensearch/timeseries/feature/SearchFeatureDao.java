@@ -106,31 +106,6 @@ public class SearchFeatureDao extends AbstractRetriever {
         Clock clock,
         int maxEntitiesForPreview,
         int pageSize,
-        long previewTimeoutInMilliseconds
-    ) {
-        this(
-            client,
-            xContent,
-            clientUtil,
-            clusterService,
-            minimumDocCount,
-            clock,
-            maxEntitiesForPreview,
-            pageSize,
-            previewTimeoutInMilliseconds,
-            null
-        );
-    }
-
-    SearchFeatureDao(
-        Client client,
-        NamedXContentRegistry xContent,
-        SecurityClientUtil clientUtil,
-        ClusterService clusterService,
-        int minimumDocCount,
-        Clock clock,
-        int maxEntitiesForPreview,
-        int pageSize,
         long previewTimeoutInMilliseconds,
         PPLDirectQueryExecutor pplDirectQueryExecutor
     ) {
@@ -180,7 +155,8 @@ public class SearchFeatureDao extends AbstractRetriever {
             Clock.systemUTC(),
             MAX_ENTITIES_FOR_PREVIEW.get(settings),
             AD_PAGE_SIZE.get(settings),
-            PREVIEW_TIMEOUT_IN_MILLIS
+            PREVIEW_TIMEOUT_IN_MILLIS,
+            null
         );
     }
 

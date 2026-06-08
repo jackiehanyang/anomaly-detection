@@ -26,6 +26,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.ActionType;
@@ -50,6 +52,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * SQL plugin's internal PPL transport action.
  */
 public class PPLDirectQueryExecutor {
+    private static final Logger logger = LogManager.getLogger(PPLDirectQueryExecutor.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final DateTimeFormatter PPL_TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
         .appendPattern("yyyy-MM-dd HH:mm:ss")
@@ -88,7 +91,7 @@ public class PPLDirectQueryExecutor {
         }
 
         executeQuery(
-            null,
+            config.getUser(),
             config,
             compiled -> compiledQuery.buildMetricQueryForRange(startTimeMs, endTimeMs),
             context,
@@ -113,7 +116,7 @@ public class PPLDirectQueryExecutor {
         }
 
         executeQuery(
-            null,
+            config.getUser(),
             config,
             compiled -> compiledQuery.buildMetricQueryForRangeBySpan(startTimeMs, endTimeMs),
             context,
@@ -135,7 +138,7 @@ public class PPLDirectQueryExecutor {
 
     public void executeMinDataTimeQuery(Config config, AnalysisType context, ActionListener<Optional<Long>> listener) {
         executeQuery(
-            null,
+            config.getUser(),
             config,
             PPLSource.CompiledPPLQuery::buildMinTimeQuery,
             context,
@@ -216,6 +219,7 @@ public class PPLDirectQueryExecutor {
 
         JsonNode firstRow = datarows.get(0);
         if (!firstRow.isArray() || firstRow.size() < metricCount) {
+            logger.warn("Skipping malformed PPL metric row. Expected {} metric column(s), got [{}].", metricCount, firstRow);
             return Optional.empty();
         }
 
@@ -231,10 +235,17 @@ public class PPLDirectQueryExecutor {
 
         for (JsonNode row : datarows) {
             if (!row.isArray() || row.size() <= metricCount) {
+                logger
+                    .warn(
+                        "Skipping malformed PPL metric row. Expected {} metric column(s) plus a bucket column, got [{}].",
+                        metricCount,
+                        row
+                    );
                 continue;
             }
             Optional<Long> bucketTime = parseTimestampValue(row.get(metricCount));
             if (bucketTime.isEmpty()) {
+                logger.warn("Skipping PPL metric row without a valid bucket timestamp: [{}].", row);
                 continue;
             }
             valuesByBucket.put(bucketTime.get(), parseMetricRow(row, metricCount));
@@ -251,7 +262,8 @@ public class PPLDirectQueryExecutor {
         for (int i = 0; i < metricCount; i++) {
             JsonNode valueNode = row.get(i);
             if (valueNode == null || valueNode.isNull()) {
-                return Optional.empty();
+                values[i] = Double.NaN;
+                continue;
             }
             if (valueNode.isNumber()) {
                 values[i] = valueNode.doubleValue();
@@ -261,7 +273,7 @@ public class PPLDirectQueryExecutor {
                 values[i] = Double.parseDouble(valueNode.textValue());
                 continue;
             }
-            return Optional.empty();
+            values[i] = Double.NaN;
         }
         return Optional.of(values);
     }
@@ -339,6 +351,19 @@ public class PPLDirectQueryExecutor {
             this.queryId = null;
         }
 
+        private PPLTransportRequest(StreamInput in) throws IOException {
+            super(in);
+            this.query = in.readOptionalString();
+            this.format = in.readOptionalString();
+            this.explainMode = in.readOptionalString();
+            this.jsonContent = in.readOptionalString();
+            this.path = in.readOptionalString();
+            this.sanitize = in.readBoolean();
+            in.readEnum(PPLJsonStyle.class);
+            this.profile = in.readBoolean();
+            this.queryId = in.readOptionalString();
+        }
+
         @Override
         public ActionRequestValidationException validate() {
             return null;
@@ -356,6 +381,24 @@ public class PPLDirectQueryExecutor {
             out.writeEnum(PPLJsonStyle.COMPACT);
             out.writeBoolean(profile);
             out.writeOptionalString(queryId);
+        }
+
+        private static PPLTransportRequest fromActionRequest(ActionRequest actionRequest) {
+            if (actionRequest instanceof PPLTransportRequest) {
+                return (PPLTransportRequest) actionRequest;
+            }
+
+            try (
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                OutputStreamStreamOutput output = new OutputStreamStreamOutput(baos)
+            ) {
+                actionRequest.writeTo(output);
+                try (InputStreamStreamInput input = new InputStreamStreamInput(new ByteArrayInputStream(baos.toByteArray()))) {
+                    return new PPLTransportRequest(input);
+                }
+            } catch (IOException e) {
+                throw new IllegalArgumentException("failed to parse ActionRequest into local PPL transport request", e);
+            }
         }
     }
 

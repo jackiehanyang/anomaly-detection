@@ -190,72 +190,6 @@ public class AnomalyDetector extends Config {
         Boolean flattenResultIndexMapping,
         Instant lastBreakingUIChangeTime,
         TimeConfiguration frequency,
-        Boolean autoCreated
-    ) {
-        this(
-            detectorId,
-            version,
-            name,
-            description,
-            timeField,
-            indices,
-            features,
-            filterQuery,
-            detectionInterval,
-            windowDelay,
-            shingleSize,
-            uiMetadata,
-            schemaVersion,
-            lastUpdateTime,
-            categoryFields,
-            user,
-            resultIndex,
-            imputationOption,
-            recencyEmphasis,
-            seasonIntervals,
-            historyIntervals,
-            rules,
-            customResultIndexMinSize,
-            customResultIndexMinAge,
-            customResultIndexTTL,
-            flattenResultIndexMapping,
-            lastBreakingUIChangeTime,
-            frequency,
-            autoCreated,
-            null,
-            null
-        );
-    }
-
-    public AnomalyDetector(
-        String detectorId,
-        Long version,
-        String name,
-        String description,
-        String timeField,
-        List<String> indices,
-        List<Feature> features,
-        QueryBuilder filterQuery,
-        TimeConfiguration detectionInterval,
-        TimeConfiguration windowDelay,
-        Integer shingleSize,
-        Map<String, Object> uiMetadata,
-        Integer schemaVersion,
-        Instant lastUpdateTime,
-        List<String> categoryFields,
-        User user,
-        String resultIndex,
-        ImputationOption imputationOption,
-        Integer recencyEmphasis,
-        Integer seasonIntervals,
-        Integer historyIntervals,
-        List<Rule> rules,
-        Integer customResultIndexMinSize,
-        Integer customResultIndexMinAge,
-        Integer customResultIndexTTL,
-        Boolean flattenResultIndexMapping,
-        Instant lastBreakingUIChangeTime,
-        TimeConfiguration frequency,
         Boolean autoCreated,
         String sourceType,
         PPLSource pplSource
@@ -309,7 +243,7 @@ public class AnomalyDetector extends Config {
             }
         }
 
-        TimeConfiguration resolvedDetectionInterval = this.interval;
+        TimeConfiguration resolvedDetectionInterval = detectionInterval != null ? detectionInterval : this.interval;
         if (resolvedDetectionInterval == null) {
             errorMessage = ADCommonMessages.NULL_DETECTION_INTERVAL;
             issueType = ValidationIssueType.DETECTION_INTERVAL;

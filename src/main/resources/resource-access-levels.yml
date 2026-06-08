@@ -9,6 +9,7 @@ resource_types:
         - 'cluster:admin/opendistro/ad/detector/preview'
         - 'cluster:admin/opendistro/ad/detectors/get'
         - 'cluster:admin/opendistro/ad/result/topAnomalies'
+        - 'cluster:admin/opensearch/ppl'
 
     ad_read_write:
       allowed_actions:
@@ -16,6 +17,7 @@ resource_types:
         - 'cluster:monitor/*'
         - "cluster:admin/ingest/pipeline/delete"
         - "cluster:admin/ingest/pipeline/put"
+        - 'cluster:admin/opensearch/ppl'
 
     ad_full_access:
       allowed_actions:
@@ -24,6 +26,7 @@ resource_types:
         - "cluster:admin/opendistro/ad/*"
         - 'cluster:monitor/*'
         - "cluster:admin/security/resource/share"
+        - 'cluster:admin/opensearch/ppl'
 
   forecaster:
     forecast_read_only:
@@ -32,6 +35,7 @@ resource_types:
         - 'cluster:admin/plugin/forecast/forecaster/stats'
         - 'cluster:admin/plugin/forecast/forecaster/suggest'
         - 'cluster:admin/plugin/forecast/forecaster/validate'
+        - 'cluster:admin/plugin/forecast/forecaster/preview'
         - 'cluster:admin/plugin/forecast/forecasters/get'
         - 'cluster:admin/plugin/forecast/forecasters/info'
         - 'cluster:admin/plugin/forecast/result/topForecasts'

@@ -494,6 +494,8 @@ public class TestHelpers {
             null,
             lastUpdateTime,
             new IntervalTimeConfiguration(detectionIntervalInMinutes, ChronoUnit.MINUTES),
+            null,
+            null,
             null
         );
     }
@@ -552,6 +554,8 @@ public class TestHelpers {
             null,
             Instant.now(),
             new IntervalTimeConfiguration(detectionIntervalInMinutes, ChronoUnit.MINUTES),
+            null,
+            null,
             null
         );
     }
@@ -622,6 +626,8 @@ public class TestHelpers {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
     }
@@ -667,6 +673,8 @@ public class TestHelpers {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
     }
@@ -705,6 +713,8 @@ public class TestHelpers {
             true,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
     }
@@ -742,6 +752,8 @@ public class TestHelpers {
             null,
             Instant.now().truncatedTo(ChronoUnit.SECONDS),
             interval,
+            null,
+            null,
             null
         );
     }
@@ -785,6 +797,8 @@ public class TestHelpers {
             null,
             Instant.now().truncatedTo(ChronoUnit.SECONDS),
             interval,
+            null,
+            null,
             null
         );
     }
@@ -972,7 +986,9 @@ public class TestHelpers {
                 null,
                 lastUpdateTime,
                 detectionInterval,
-                autoCreated
+                autoCreated,
+                null,
+                null
             );
         }
     }
@@ -1012,6 +1028,8 @@ public class TestHelpers {
             null,
             Instant.now().truncatedTo(ChronoUnit.SECONDS),
             interval,
+            null,
+            null,
             null
         );
     }

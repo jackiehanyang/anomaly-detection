@@ -1153,7 +1153,14 @@ public abstract class AbstractTimeSeriesActionHandler<T extends ActionResponse, 
             return;
         }
         if (isPPLSourceConfig()) {
-            checkConfigNameExists(id, indexingDryRun, listener);
+            ActionListener<Optional<Long>> validatePPLQueryListener = ActionListener.wrap(response -> {
+                checkConfigNameExists(id, indexingDryRun, listener);
+            },
+                exception -> {
+                    listener.onFailure(createValidationException(exception.getMessage(), ValidationIssueType.GENERAL_SETTINGS));
+                }
+            );
+            searchFeatureDao.getLatestDataTime(user, config, Optional.empty(), context, validatePPLQueryListener);
             return;
         }
         // checking runtime error from feature query

@@ -366,6 +366,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -406,6 +408,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -446,6 +450,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -486,6 +492,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -526,6 +534,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -566,6 +576,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -606,6 +618,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                     null,
                     Instant.now(),
                     TestHelpers.randomIntervalTimeConfiguration(),
+                    null,
+                    null,
                     null
                 )
             );
@@ -645,6 +659,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                 null,
                 Instant.now(),
                 TestHelpers.randomIntervalTimeConfiguration(),
+                null,
+                null,
                 null
             )
         );
@@ -685,6 +701,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                 null,
                 Instant.now(),
                 new IntervalTimeConfiguration(0, ChronoUnit.MINUTES),
+                null,
+                null,
                 null
             )
         );
@@ -725,6 +743,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                 null,
                 Instant.now(),
                 new IntervalTimeConfiguration(3, ChronoUnit.MINUTES),
+                null,
+                null,
                 null
             )
         );
@@ -768,6 +788,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                 null,
                 Instant.now(),
                 TestHelpers.randomIntervalTimeConfiguration(),
+                null,
+                null,
                 null
             )
         );
@@ -822,6 +844,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
         assertEquals((int) anomalyDetector.getShingleSize(), 5);
@@ -861,6 +885,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
         // seasonalityIntervals is not null and custom shingle size is null, use seasonalityIntervals to deterine shingle size
@@ -895,6 +921,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
         // seasonalityIntervals is null and custom shingle size is null, use default shingle size
@@ -932,6 +960,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
         assertNotNull(anomalyDetector.getFeatureAttributes());
@@ -969,6 +999,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
         String errorMessage = anomalyDetector.validateCustomResultIndex("abc");
@@ -1174,6 +1206,8 @@ public class AnomalyDetectorTests extends AbstractTimeSeriesTest {
                 null,
                 Instant.now(),
                 TestHelpers.randomIntervalTimeConfiguration(),
+                null,
+                null,
                 null
             )
         );

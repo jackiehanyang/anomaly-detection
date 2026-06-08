@@ -879,6 +879,8 @@ public class IndexAnomalyDetectorActionHandlerTests extends AbstractTimeSeriesTe
                         false,
                         Instant.now(),
                         detector.getFrequency(),
+                        null,
+                        null,
                         null
                     );
                     try {

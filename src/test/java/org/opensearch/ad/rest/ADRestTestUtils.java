@@ -230,6 +230,8 @@ public class ADRestTestUtils {
             null,
             now,
             new IntervalTimeConfiguration(detectionIntervalInMinutes, ChronoUnit.MINUTES),
+            null,
+            null,
             null
         );
 
