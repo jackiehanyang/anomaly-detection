@@ -60,6 +60,7 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.commons.ConfigConstants;
+import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContent;
@@ -72,6 +73,7 @@ import org.opensearch.timeseries.breaker.CircuitBreakerService;
 import org.opensearch.timeseries.constant.CommonMessages;
 import org.opensearch.timeseries.feature.FeatureManager;
 import org.opensearch.timeseries.feature.Features;
+import org.opensearch.timeseries.model.Config;
 import org.opensearch.timeseries.util.RestHandlerUtils;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
@@ -181,6 +183,64 @@ public class PreviewAnomalyDetectorTransportActionTests extends OpenSearchSingle
             return null;
         }).when(featureManager).getPreviewFeatures(any(), anyLong(), anyLong(), any());
         action.doExecute(task, request, previewResponse);
+        assertTrue(inProgressLatch.await(100, TimeUnit.SECONDS));
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testPreviewExecuteCopiesInlinePPLDetectorWithRequestUser() throws Exception {
+        final CountDownLatch inProgressLatch = new CountDownLatch(1);
+        AnomalyDetector detector = AnomalyDetector
+            .parse(
+                TestHelpers
+                    .parser(
+                        "{"
+                            + "\"name\":\"ppl-detector\","
+                            + "\"description\":\"ppl detector\","
+                            + "\"source_type\":\"PPL\","
+                            + "\"ppl_source\":{"
+                            + "\"query_language\":\"PPL\","
+                            + "\"query\":\"source = sample-http-responses | stats count() as doc_count by span(timestamp, 10m) as bucket\""
+                            + "},"
+                            + "\"window_delay\":{\"period\":{\"interval\":1,\"unit\":\"Minutes\"}},"
+                            + "\"last_update_time\":1700000000000"
+                            + "}"
+                    )
+            );
+        User requestUser = new User("alice", Collections.emptyList(), Collections.singletonList("odfe"), Collections.emptyList());
+        Instant startTime = Instant.now();
+        Instant endTime = startTime.plusSeconds(60);
+        PreviewAnomalyDetectorRequest request = new PreviewAnomalyDetectorRequest(detector, detector.getId(), startTime, endTime);
+
+        doReturn(TestHelpers.randomThresholdingResults()).when(modelManager).getPreviewResults(any(), any());
+        doAnswer(invocation -> {
+            AnomalyDetector copiedDetector = invocation.getArgument(0);
+            assertNotSame(detector, copiedDetector);
+            assertEquals(requestUser, copiedDetector.getUser());
+            assertEquals(Config.SOURCE_TYPE_PPL, copiedDetector.getSourceType());
+            assertEquals(detector.getPPLSource(), copiedDetector.getPPLSource());
+            assertEquals(detector.getDetectionDateRange(), copiedDetector.getDetectionDateRange());
+            ActionListener<Features> featureListener = invocation.getArgument(3);
+            featureListener.onResponse(TestHelpers.randomFeatures());
+            return null;
+        }).when(featureManager).getPreviewFeatures(any(), anyLong(), anyLong(), any());
+
+        ActionListener<PreviewAnomalyDetectorResponse> previewResponse = new ActionListener<PreviewAnomalyDetectorResponse>() {
+            @Override
+            public void onResponse(PreviewAnomalyDetectorResponse response) {
+                Assert.assertNotNull(response);
+                inProgressLatch.countDown();
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                Assert.fail(e.getMessage());
+            }
+        };
+
+        try (ThreadContext.StoredContext context = client().threadPool().getThreadContext().stashContext()) {
+            action.previewExecute(request, context, requestUser, previewResponse);
+        }
         assertTrue(inProgressLatch.await(100, TimeUnit.SECONDS));
     }
 

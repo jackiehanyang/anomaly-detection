@@ -27,6 +27,7 @@ import java.util.function.BiConsumer;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensearch.action.ActionRequest;
+import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
@@ -268,21 +269,59 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
     }
 
     public void testPPLTransportRequestFromActionRequestSupportsSerializedAndDirectRequests() throws Exception {
-        clientUtil.response = new RawPPLActionResponse("{\"datarows\":[[42.5,\"7.25\"]]}");
-        CapturingListener<Optional<double[]>> listener = new CapturingListener<>();
-
-        executor.executeMetricQuery(config, 1_000L, 2_000L, AnalysisType.AD, listener);
+        ActionRequest capturedRequest = newPPLTransportRequest(
+            "source = logs | stats count() as count by span(timestamp, 1m) as bucket",
+            "jdbc",
+            "/_plugins/_ppl"
+        );
 
         Method fromActionRequest = pplTransportRequestClass().getDeclaredMethod("fromActionRequest", ActionRequest.class);
         fromActionRequest.setAccessible(true);
-        Object serializedRequest = fromActionRequest.invoke(null, clientUtil.capturedRequest);
+        Object serializedRequest = fromActionRequest.invoke(null, new DelegatingActionRequest(capturedRequest));
 
-        assertEquals(readPrivateField(clientUtil.capturedRequest, "query"), readPrivateField(serializedRequest, "query"));
-        assertEquals(readPrivateField(clientUtil.capturedRequest, "format"), readPrivateField(serializedRequest, "format"));
-        assertEquals(readPrivateField(clientUtil.capturedRequest, "path"), readPrivateField(serializedRequest, "path"));
-        assertEquals(readPrivateField(clientUtil.capturedRequest, "sanitize"), readPrivateField(serializedRequest, "sanitize"));
-        assertEquals(readPrivateField(clientUtil.capturedRequest, "profile"), readPrivateField(serializedRequest, "profile"));
-        assertSame(clientUtil.capturedRequest, fromActionRequest.invoke(null, serializedRequest));
+        assertEquals(readPrivateField(capturedRequest, "query"), readPrivateField(serializedRequest, "query"));
+        assertEquals(readPrivateField(capturedRequest, "format"), readPrivateField(serializedRequest, "format"));
+        assertEquals(readPrivateField(capturedRequest, "path"), readPrivateField(serializedRequest, "path"));
+        assertEquals(readPrivateField(capturedRequest, "sanitize"), readPrivateField(serializedRequest, "sanitize"));
+        assertEquals(readPrivateField(capturedRequest, "profile"), readPrivateField(serializedRequest, "profile"));
+        assertNull(((ActionRequest) serializedRequest).validate());
+        assertSame(serializedRequest, fromActionRequest.invoke(null, serializedRequest));
+    }
+
+    public void testPPLTransportRequestRoundTripsThroughStreamConstructor() throws Exception {
+        ActionRequest request = newPPLTransportRequest(
+            "source = logs | stats count() as count by span(timestamp, 1m) as bucket",
+            "jdbc",
+            "/_plugins/_ppl"
+        );
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (OutputStreamStreamOutput output = new OutputStreamStreamOutput(baos)) {
+            request.writeTo(output);
+        }
+        try (InputStreamStreamInput input = new InputStreamStreamInput(new ByteArrayInputStream(baos.toByteArray()))) {
+            Object roundTrippedRequest = pplTransportRequestStreamConstructor().newInstance(input);
+            assertEquals(readPrivateField(request, "query"), readPrivateField(roundTrippedRequest, "query"));
+            assertEquals(readPrivateField(request, "format"), readPrivateField(roundTrippedRequest, "format"));
+            assertNull(readPrivateField(roundTrippedRequest, "explainMode"));
+            assertNull(readPrivateField(roundTrippedRequest, "jsonContent"));
+            assertEquals(readPrivateField(request, "path"), readPrivateField(roundTrippedRequest, "path"));
+            assertTrue((Boolean) readPrivateField(roundTrippedRequest, "sanitize"));
+            assertFalse((Boolean) readPrivateField(roundTrippedRequest, "profile"));
+            assertNull(readPrivateField(roundTrippedRequest, "queryId"));
+        }
+    }
+
+    public void testPPLTransportRequestFromActionRequestFailsOnInvalidSerializedRequest() throws Exception {
+        Method fromActionRequest = pplTransportRequestClass().getDeclaredMethod("fromActionRequest", ActionRequest.class);
+        fromActionRequest.setAccessible(true);
+
+        InvocationTargetException exception = expectThrows(
+            InvocationTargetException.class,
+            () -> fromActionRequest.invoke(null, new FailingActionRequest())
+        );
+        assertTrue(exception.getCause() instanceof IllegalArgumentException);
+        assertTrue(exception.getCause().getMessage().contains("failed to parse ActionRequest"));
     }
 
     public void testPPLTransportResponseFromActionResponseFailsOnInvalidSerializedResponse() throws Exception {
@@ -301,6 +340,22 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         Constructor<?> constructor = pplTransportResponseClass().getDeclaredConstructor(StreamInput.class);
         constructor.setAccessible(true);
         return constructor;
+    }
+
+    private static Constructor<?> pplTransportRequestConstructor() throws Exception {
+        Constructor<?> constructor = pplTransportRequestClass().getDeclaredConstructor(String.class, String.class, String.class);
+        constructor.setAccessible(true);
+        return constructor;
+    }
+
+    private static Constructor<?> pplTransportRequestStreamConstructor() throws Exception {
+        Constructor<?> constructor = pplTransportRequestClass().getDeclaredConstructor(StreamInput.class);
+        constructor.setAccessible(true);
+        return constructor;
+    }
+
+    private static ActionRequest newPPLTransportRequest(String query, String format, String path) throws Exception {
+        return (ActionRequest) pplTransportRequestConstructor().newInstance(query, format, path);
     }
 
     private static Class<?> pplTransportResponseClass() throws ClassNotFoundException {
@@ -363,6 +418,36 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
     }
 
     private static class FailingActionResponse extends ActionResponse {
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            throw new IOException("cannot serialize");
+        }
+    }
+
+    private static class DelegatingActionRequest extends ActionRequest {
+        private final ActionRequest delegate;
+
+        private DelegatingActionRequest(ActionRequest delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public ActionRequestValidationException validate() {
+            return null;
+        }
+
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            delegate.writeTo(out);
+        }
+    }
+
+    private static class FailingActionRequest extends ActionRequest {
+        @Override
+        public ActionRequestValidationException validate() {
+            return null;
+        }
+
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             throw new IOException("cannot serialize");
