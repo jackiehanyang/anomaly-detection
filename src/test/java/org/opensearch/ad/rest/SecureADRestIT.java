@@ -1078,6 +1078,15 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(lionClient, requestBody); });
         Assert.assertTrue(exception.getMessage().contains("no permissions for [cluster:admin/opensearch/ppl]"));
 
+        String adPreviewWithPPLRole = "ad_preview_with_ppl";
+        createClusterRole(
+            adPreviewWithPPLRole,
+            Arrays.asList("cluster:admin/opendistro/ad/detector/preview", "cluster:admin/opensearch/ppl")
+        );
+        createRoleMapping(adPreviewWithPPLRole, new ArrayList<>(Arrays.asList(oceanUser)));
+        exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(oceanClient, requestBody); });
+        Assert.assertTrue(exception.getMessage().contains("no permissions for [indices:data/read/search]"));
+
     }
 
     public void testValidateAnomalyDetector() throws IOException {

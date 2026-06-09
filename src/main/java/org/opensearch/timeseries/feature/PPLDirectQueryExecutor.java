@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -31,6 +32,8 @@ import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.ActionType;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.ActionResponse;
@@ -38,6 +41,7 @@ import org.opensearch.core.common.io.stream.InputStreamStreamInput;
 import org.opensearch.core.common.io.stream.OutputStreamStreamOutput;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.timeseries.AnalysisType;
 import org.opensearch.timeseries.model.Config;
 import org.opensearch.timeseries.model.PPLSource;
@@ -188,26 +192,34 @@ public class PPLDirectQueryExecutor {
             }
         }, listener::onFailure);
 
-        if (user != null) {
-            clientUtil
-                .asyncRequestWithInjectedSecurity(
-                    request,
-                    (pplRequest, actionListener) -> client.execute(PPL_QUERY_ACTION, pplRequest, actionListener),
+        SearchRequest sourceAccessRequest = new SearchRequest(compiledQuery.getIndex()).source(new SearchSourceBuilder().size(0));
+        ActionListener<SearchResponse> sourceAccessListener = ActionListener
+            .wrap(
+                response -> executeWithInjectedSecurity(
                     user,
-                    client,
-                    context,
-                    queryResponseListener
-                );
-        } else {
-            clientUtil
-                .asyncRequestWithInjectedSecurity(
+                    config,
                     request,
                     (pplRequest, actionListener) -> client.execute(PPL_QUERY_ACTION, pplRequest, actionListener),
-                    config.getId(),
-                    client,
                     context,
                     queryResponseListener
-                );
+                ),
+                listener::onFailure
+            );
+        executeWithInjectedSecurity(user, config, sourceAccessRequest, client::search, context, sourceAccessListener);
+    }
+
+    private <Request extends ActionRequest, Response extends ActionResponse> void executeWithInjectedSecurity(
+        User user,
+        Config config,
+        Request request,
+        BiConsumer<Request, ActionListener<Response>> consumer,
+        AnalysisType context,
+        ActionListener<Response> listener
+    ) {
+        if (user != null) {
+            clientUtil.asyncRequestWithInjectedSecurity(request, consumer, user, client, context, listener);
+        } else {
+            clientUtil.asyncRequestWithInjectedSecurity(request, consumer, config.getId(), client, context, listener);
         }
     }
 

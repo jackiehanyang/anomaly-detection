@@ -28,6 +28,8 @@ import java.util.function.BiConsumer;
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
@@ -77,9 +79,10 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertNull(listener.failure);
         assertTrue(listener.response.isPresent());
         assertArrayEquals(new double[] { 42.5, 7.25 }, listener.response.get(), 0.001);
-        assertEquals(1, clientUtil.configCallCount);
+        assertEquals(2, clientUtil.configCallCount);
         assertEquals("detector-id", clientUtil.capturedConfigId);
         assertEquals(0, clientUtil.userCallCount);
+        assertSourceAccessRequestTargetsLogs();
         assertSerializedRequestContains(clientUtil.capturedRequest, "timestamp >= \"1970-01-01 00:00:01.000\"");
     }
 
@@ -134,9 +137,10 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
 
         assertNull(listener.failure);
         assertTrue(listener.response.isPresent());
-        assertEquals(1, clientUtil.userCallCount);
+        assertEquals(2, clientUtil.userCallCount);
         assertEquals(user, clientUtil.capturedUser);
         assertEquals(0, clientUtil.configCallCount);
+        assertSourceAccessRequestTargetsLogs();
     }
 
     public void testExecuteMetricQueryFailsOnInvalidMetricValue() {
@@ -171,9 +175,10 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertNull(listener.failure);
         assertTrue(listener.response.isPresent());
         assertEquals(1_123L, listener.response.get().longValue());
-        assertEquals(1, clientUtil.userCallCount);
+        assertEquals(2, clientUtil.userCallCount);
         assertEquals(user, clientUtil.capturedUser);
         assertEquals(0, clientUtil.configCallCount);
+        assertSourceAccessRequestTargetsLogs();
         assertSerializedRequestContains(clientUtil.capturedRequest, "max(timestamp) as latest_time");
     }
 
@@ -186,7 +191,8 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertNull(listener.failure);
         assertTrue(listener.response.isPresent());
         assertEquals(12_345L, listener.response.get().longValue());
-        assertEquals(1, clientUtil.configCallCount);
+        assertEquals(2, clientUtil.configCallCount);
+        assertSourceAccessRequestTargetsLogs();
     }
 
     public void testExecuteMinDataTimeQueryUsesUserSecurityWhenConfigHasUser() {
@@ -199,9 +205,10 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
 
         assertNull(listener.failure);
         assertTrue(listener.response.isPresent());
-        assertEquals(1, clientUtil.userCallCount);
+        assertEquals(2, clientUtil.userCallCount);
         assertEquals(user, clientUtil.capturedUser);
         assertEquals(0, clientUtil.configCallCount);
+        assertSourceAccessRequestTargetsLogs();
     }
 
     public void testExecuteDateRangeQueryParsesTextAndNumericTimestamps() {
@@ -382,6 +389,12 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertTrue((Boolean) readPrivateField(request, "sanitize"));
     }
 
+    private void assertSourceAccessRequestTargetsLogs() {
+        assertNotNull(clientUtil.capturedSourceAccessRequest);
+        assertArrayEquals(new String[] { "logs" }, clientUtil.capturedSourceAccessRequest.indices());
+        assertEquals(0, clientUtil.capturedSourceAccessRequest.source().size());
+    }
+
     private static Object readPrivateField(Object target, String fieldName) throws Exception {
         java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
@@ -458,6 +471,7 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         private ActionResponse response;
         private Exception failure;
         private ActionRequest capturedRequest;
+        private SearchRequest capturedSourceAccessRequest;
         private String capturedConfigId;
         private User capturedUser;
         private int configCallCount;
@@ -480,7 +494,7 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
             capturedRequest = request;
             capturedConfigId = configId;
             configCallCount++;
-            respond(listener);
+            respond(request, listener);
         }
 
         @Override
@@ -496,13 +510,19 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
             capturedRequest = request;
             capturedUser = user;
             userCallCount++;
-            respond(listener);
+            respond(request, listener);
         }
 
         @SuppressWarnings("unchecked")
-        private <Response extends ActionResponse> void respond(ActionListener<Response> listener) {
+        private <Request extends ActionRequest, Response extends ActionResponse> void respond(
+            Request request,
+            ActionListener<Response> listener
+        ) {
             if (failure != null) {
                 listener.onFailure(failure);
+            } else if (request instanceof SearchRequest) {
+                capturedSourceAccessRequest = (SearchRequest) request;
+                listener.onResponse((Response) mock(SearchResponse.class));
             } else {
                 listener.onResponse((Response) response);
             }
