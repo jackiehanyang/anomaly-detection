@@ -487,7 +487,10 @@ testClusters.integTest {
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
     if (_numNodes > 1) numberOfNodes = _numNodes
     configureClusterPlugins(delegate, jobSchedulerFile, securityPluginFile, securityEnabled)
-    plugin(provider(sqlPluginFile))
+    // Benchmark jobs exercise existing DSL model paths and do not need the SQL/PPL plugin.
+    if (!Boolean.getBoolean("model-benchmark")) {
+        plugin(provider(sqlPluginFile))
+    }
     nodes.each { it.jvmArgs("-Xms1g", "-Xmx1g") }
 }
 
