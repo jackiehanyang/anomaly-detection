@@ -395,23 +395,6 @@ public class PPLDirectQueryExecutor {
             out.writeOptionalString(queryId);
         }
 
-        private static PPLTransportRequest fromActionRequest(ActionRequest actionRequest) {
-            if (actionRequest instanceof PPLTransportRequest) {
-                return (PPLTransportRequest) actionRequest;
-            }
-
-            try (
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                OutputStreamStreamOutput output = new OutputStreamStreamOutput(baos)
-            ) {
-                actionRequest.writeTo(output);
-                try (InputStreamStreamInput input = new InputStreamStreamInput(new ByteArrayInputStream(baos.toByteArray()))) {
-                    return new PPLTransportRequest(input);
-                }
-            } catch (IOException e) {
-                throw new IllegalArgumentException("failed to parse ActionRequest into local PPL transport request", e);
-            }
-        }
     }
 
     private static final class PPLTransportResponse extends ActionResponse {

@@ -27,7 +27,6 @@ import java.util.function.BiConsumer;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensearch.action.ActionRequest;
-import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.common.settings.Settings;
@@ -275,26 +274,6 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
         assertSame(serializedResponse, directResponse);
     }
 
-    public void testPPLTransportRequestFromActionRequestSupportsSerializedAndDirectRequests() throws Exception {
-        ActionRequest capturedRequest = newPPLTransportRequest(
-            "source = logs | stats count() as count by span(timestamp, 1m) as bucket",
-            "jdbc",
-            "/_plugins/_ppl"
-        );
-
-        Method fromActionRequest = pplTransportRequestClass().getDeclaredMethod("fromActionRequest", ActionRequest.class);
-        fromActionRequest.setAccessible(true);
-        Object serializedRequest = fromActionRequest.invoke(null, new DelegatingActionRequest(capturedRequest));
-
-        assertEquals(readPrivateField(capturedRequest, "query"), readPrivateField(serializedRequest, "query"));
-        assertEquals(readPrivateField(capturedRequest, "format"), readPrivateField(serializedRequest, "format"));
-        assertEquals(readPrivateField(capturedRequest, "path"), readPrivateField(serializedRequest, "path"));
-        assertEquals(readPrivateField(capturedRequest, "sanitize"), readPrivateField(serializedRequest, "sanitize"));
-        assertEquals(readPrivateField(capturedRequest, "profile"), readPrivateField(serializedRequest, "profile"));
-        assertNull(((ActionRequest) serializedRequest).validate());
-        assertSame(serializedRequest, fromActionRequest.invoke(null, serializedRequest));
-    }
-
     public void testPPLTransportRequestRoundTripsThroughStreamConstructor() throws Exception {
         ActionRequest request = newPPLTransportRequest(
             "source = logs | stats count() as count by span(timestamp, 1m) as bucket",
@@ -317,18 +296,6 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
             assertFalse((Boolean) readPrivateField(roundTrippedRequest, "profile"));
             assertNull(readPrivateField(roundTrippedRequest, "queryId"));
         }
-    }
-
-    public void testPPLTransportRequestFromActionRequestFailsOnInvalidSerializedRequest() throws Exception {
-        Method fromActionRequest = pplTransportRequestClass().getDeclaredMethod("fromActionRequest", ActionRequest.class);
-        fromActionRequest.setAccessible(true);
-
-        InvocationTargetException exception = expectThrows(
-            InvocationTargetException.class,
-            () -> fromActionRequest.invoke(null, new FailingActionRequest())
-        );
-        assertTrue(exception.getCause() instanceof IllegalArgumentException);
-        assertTrue(exception.getCause().getMessage().contains("failed to parse ActionRequest"));
     }
 
     public void testPPLTransportResponseFromActionResponseFailsOnInvalidSerializedResponse() throws Exception {
@@ -431,36 +398,6 @@ public class PPLDirectQueryExecutorTests extends OpenSearchTestCase {
     }
 
     private static class FailingActionResponse extends ActionResponse {
-        @Override
-        public void writeTo(StreamOutput out) throws IOException {
-            throw new IOException("cannot serialize");
-        }
-    }
-
-    private static class DelegatingActionRequest extends ActionRequest {
-        private final ActionRequest delegate;
-
-        private DelegatingActionRequest(ActionRequest delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public ActionRequestValidationException validate() {
-            return null;
-        }
-
-        @Override
-        public void writeTo(StreamOutput out) throws IOException {
-            delegate.writeTo(out);
-        }
-    }
-
-    private static class FailingActionRequest extends ActionRequest {
-        @Override
-        public ActionRequestValidationException validate() {
-            return null;
-        }
-
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             throw new IOException("cannot serialize");

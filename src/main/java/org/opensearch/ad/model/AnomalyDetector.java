@@ -243,11 +243,10 @@ public class AnomalyDetector extends Config {
             }
         }
 
-        TimeConfiguration resolvedDetectionInterval = detectionInterval != null ? detectionInterval : this.interval;
-        if (resolvedDetectionInterval == null) {
+        if (this.interval == null) {
             errorMessage = ADCommonMessages.NULL_DETECTION_INTERVAL;
             issueType = ValidationIssueType.DETECTION_INTERVAL;
-        } else if (((IntervalTimeConfiguration) resolvedDetectionInterval).getInterval() <= 0) {
+        } else if (((IntervalTimeConfiguration) this.interval).getInterval() <= 0) {
             errorMessage = ADCommonMessages.INVALID_DETECTION_INTERVAL;
             issueType = ValidationIssueType.DETECTION_INTERVAL;
         }
