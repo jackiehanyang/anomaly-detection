@@ -103,13 +103,16 @@ public abstract class AnomalyDetectorRestTestCase extends ODFERestTestCase {
             TestHelpers.createIndexWithTimeField(client(), detector.getIndices().get(0), detector.getTimeField());
             TestHelpers
                 .makeRequest(
-                    client,
+                    client(),
                     "POST",
                     "/" + detector.getIndices().get(0) + "/_doc/" + randomAlphaOfLength(5) + "?refresh=true",
                     ImmutableMap.of(),
                     // avoid validation error as validation API will check at least 1 document and the timestamp field
                     // exists in index mapping
-                    TestHelpers.toHttpEntity("{\"name\": \"test\", \"" + detector.getTimeField() + "\" : \"1661386754000\"}"),
+                    TestHelpers
+                        .toHttpEntity(
+                            "{\"name\": \"test\", \"" + detector.getTimeField() + "\" : \"" + Instant.now().toEpochMilli() + "\"}"
+                        ),
                     null,
                     false
                 );
@@ -434,6 +437,7 @@ public abstract class AnomalyDetectorRestTestCase extends ODFERestTestCase {
                     .toHttpEntity(
                         "{\n"
                             + "\"cluster_permissions\": [\n"
+                            + "\"indices:data/write/bulk*\"\n"
                             + "],\n"
                             + "\"index_permissions\": [\n"
                             + "{\n"
@@ -442,13 +446,25 @@ public abstract class AnomalyDetectorRestTestCase extends ODFERestTestCase {
                             + index
                             + "\"\n"
                             + "],\n"
-                            + "\"dls\": \"\",\n"
                             + "\"fls\": [],\n"
                             + "\"masked_fields\": [],\n"
                             + "\"allowed_actions\": [\n"
-                            + "\"crud\",\n"
+                            + "\"indices:data/read/field_caps*\",\n"
+                            + "\"indices:data/read/get\",\n"
+                            + "\"indices:data/read/search\",\n"
+                            + "\"indices:data/write/bulk*\",\n"
+                            + "\"indices:data/write/delete\",\n"
+                            + "\"indices:data/write/index\",\n"
+                            + "\"indices:data/write/update\",\n"
                             + "\"indices:admin/create\",\n"
-                            + "\"indices:admin/aliases\"\n"
+                            + "\"indices:admin/aliases\",\n"
+                            + "\"indices:admin/aliases/get\",\n"
+                            + "\"indices:admin/mapping/get\",\n"
+                            + "\"indices:admin/mapping/put\",\n"
+                            + "\"indices:admin/mappings/fields/get*\",\n"
+                            + "\"indices:admin/mappings/get\",\n"
+                            + "\"indices:admin/resolve/index\",\n"
+                            + "\"indices_monitor\"\n"
                             + "]\n"
                             + "}\n"
                             + "],\n"
@@ -478,7 +494,6 @@ public abstract class AnomalyDetectorRestTestCase extends ODFERestTestCase {
                             + index
                             + "\"\n"
                             + "],\n"
-                            + "\"dls\": \"\",\n"
                             + "\"fls\": [],\n"
                             + "\"masked_fields\": [],\n"
                             + "\"allowed_actions\": [\n"
@@ -526,7 +541,6 @@ public abstract class AnomalyDetectorRestTestCase extends ODFERestTestCase {
                             + "*"
                             + "\"\n"
                             + "],\n"
-                            + "\"dls\": \"\",\n"
                             + "\"fls\": [],\n"
                             + "\"masked_fields\": [],\n"
                             + "\"allowed_actions\": [\n"
