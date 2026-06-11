@@ -1072,20 +1072,54 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         Exception exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(bobClient, requestBody); });
         Assert.assertTrue(exception.getMessage().contains(noPermsMessage));
 
-        String adPreviewWithoutPPLRole = "ad_preview_without_ppl";
+        String noPPLUser = "no_ppl_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        String noPPLPassword = generatePassword(noPPLUser);
+        createUser(noPPLUser, noPPLPassword, new ArrayList<>());
+        RestClient noPPLClient = new SecureRestClientBuilder(
+            getClusterHosts().toArray(new HttpHost[0]),
+            isHttps(),
+            noPPLUser,
+            noPPLPassword
+        ).setSocketTimeout(60000).build();
+        String adPreviewWithoutPPLRole = "ad_preview_without_ppl_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        String noPPLSourceReadRole = "ad_preview_without_ppl_source_read_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
         createClusterRole(adPreviewWithoutPPLRole, Arrays.asList("cluster:admin/opendistro/ad/detector/preview"));
-        createRoleMapping(adPreviewWithoutPPLRole, new ArrayList<>(Arrays.asList(lionUser)));
-        exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(lionClient, requestBody); });
-        Assert.assertTrue(exception.getMessage().contains("no permissions for [cluster:admin/opensearch/ppl]"));
+        createSearchRole(noPPLSourceReadRole, indexName);
+        createRoleMapping(adPreviewWithoutPPLRole, new ArrayList<>(Arrays.asList(noPPLUser)));
+        createRoleMapping(noPPLSourceReadRole, new ArrayList<>(Arrays.asList(noPPLUser)));
+        try {
+            exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(noPPLClient, requestBody); });
+            Assert.assertTrue(exception.getMessage().contains("no permissions for [cluster:admin/opensearch/ppl]"));
+        } finally {
+            noPPLClient.close();
+            deleteUser(noPPLUser);
+            deleteRoleMapping(adPreviewWithoutPPLRole);
+            deleteRoleMapping(noPPLSourceReadRole);
+        }
 
-        String adPreviewWithPPLRole = "ad_preview_with_ppl";
+        String noSourceReadUser = "no_source_read_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        String noSourceReadPassword = generatePassword(noSourceReadUser);
+        createUser(noSourceReadUser, noSourceReadPassword, new ArrayList<>());
+        RestClient noSourceReadClient = new SecureRestClientBuilder(
+            getClusterHosts().toArray(new HttpHost[0]),
+            isHttps(),
+            noSourceReadUser,
+            noSourceReadPassword
+        ).setSocketTimeout(60000).build();
+        String adPreviewWithPPLRole = "ad_preview_with_ppl_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
         createClusterRole(
             adPreviewWithPPLRole,
             Arrays.asList("cluster:admin/opendistro/ad/detector/preview", "cluster:admin/opensearch/ppl")
         );
-        createRoleMapping(adPreviewWithPPLRole, new ArrayList<>(Arrays.asList(oceanUser)));
-        exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(oceanClient, requestBody); });
-        Assert.assertTrue(exception.getMessage().contains("no permissions for [indices:data/read/search]"));
+        createRoleMapping(adPreviewWithPPLRole, new ArrayList<>(Arrays.asList(noSourceReadUser)));
+        try {
+            exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(noSourceReadClient, requestBody); });
+            Assert.assertTrue(exception.getMessage().contains("no permissions for [indices:data/read/search]"));
+        } finally {
+            noSourceReadClient.close();
+            deleteUser(noSourceReadUser);
+            deleteRoleMapping(adPreviewWithPPLRole);
+        }
 
     }
 
