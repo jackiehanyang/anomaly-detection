@@ -66,13 +66,9 @@ import org.opensearch.commons.InjectSecurity;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.RangeQueryBuilder;
-import org.opensearch.index.query.TermQueryBuilder;
 import org.opensearch.search.aggregations.AggregationBuilder;
-import org.opensearch.search.aggregations.AggregationBuilders;
 import org.opensearch.search.aggregations.bucket.terms.StringTerms;
 import org.opensearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
-import org.opensearch.search.aggregations.metrics.InternalMax;
-import org.opensearch.search.aggregations.metrics.InternalMin;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.timeseries.AnalysisType;
@@ -84,7 +80,6 @@ import org.opensearch.timeseries.common.exception.LimitExceededException;
 import org.opensearch.timeseries.common.exception.ResourceNotFoundException;
 import org.opensearch.timeseries.common.exception.TaskCancelledException;
 import org.opensearch.timeseries.common.exception.TimeSeriesException;
-import org.opensearch.timeseries.constant.CommonName;
 import org.opensearch.timeseries.feature.FeatureManager;
 import org.opensearch.timeseries.feature.SearchFeatureDao;
 import org.opensearch.timeseries.function.ExecutorFunction;
@@ -939,40 +934,18 @@ public class ADBatchTaskRunner {
 
     private void getDateRangeOfSourceData(ADTask adTask, BiConsumer<Long, Long> consumer, ActionListener<String> internalListener) {
         String taskId = adTask.getTaskId();
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
-            .aggregation(AggregationBuilders.min(CommonName.AGG_NAME_MIN_TIME).field(adTask.getDetector().getTimeField()))
-            .aggregation(AggregationBuilders.max(CommonName.AGG_NAME_MAX_TIME).field(adTask.getDetector().getTimeField()))
-            .size(0);
-        if (adTask.getEntity() != null && adTask.getEntity().getAttributes().size() > 0) {
-            BoolQueryBuilder query = new BoolQueryBuilder();
-            adTask
-                .getEntity()
-                .getAttributes()
-                .entrySet()
-                .forEach(entity -> query.filter(new TermQueryBuilder(entity.getKey(), entity.getValue())));
-            searchSourceBuilder.query(query);
+        Map<String, Object> topEntity = new HashMap<>();
+        if (adTask.getEntity() != null) {
+            topEntity.putAll(adTask.getEntity().getAttributes());
         }
-
-        SearchRequest request = new SearchRequest()
-            .indices(adTask.getDetector().getIndices().toArray(new String[0]))
-            .source(searchSourceBuilder);
-        final ActionListener<SearchResponse> searchResponseListener = ActionListener.wrap(r -> {
-            InternalMin minAgg = r.getAggregations().get(CommonName.AGG_NAME_MIN_TIME);
-            InternalMax maxAgg = r.getAggregations().get(CommonName.AGG_NAME_MAX_TIME);
-            double minValue = minAgg.getValue();
-            double maxValue = maxAgg.getValue();
-            // If time field not exist or there is no value, will return infinity value
-            if (minValue == Double.POSITIVE_INFINITY) {
-                internalListener.onFailure(new ResourceNotFoundException(adTask.getConfigId(), "There is no data in the time field"));
-                return;
-            }
+        searchFeatureDao.getDateRangeOfSourceData(adTask.getDetector(), adTask.getUser(), topEntity, ActionListener.wrap(minMax -> {
             long interval = ((IntervalTimeConfiguration) adTask.getDetector().getInterval()).toDuration().toMillis();
 
             DateRange detectionDateRange = adTask.getDetectionDateRange();
             long dataStartTime = detectionDateRange.getStartTime().toEpochMilli();
             long dataEndTime = detectionDateRange.getEndTime().toEpochMilli();
-            long minDate = (long) minValue;
-            long maxDate = (long) maxValue;
+            long minDate = minMax.getLeft();
+            long maxDate = minMax.getRight();
 
             if (minDate >= dataEndTime || maxDate <= dataStartTime) {
                 internalListener
@@ -995,19 +968,7 @@ public class ADBatchTaskRunner {
                 return;
             }
             consumer.accept(dataStartTime, dataEndTime);
-        }, e -> { internalListener.onFailure(e); });
-
-        // inject user role while searching.
-        clientUtil
-            .<SearchRequest, SearchResponse>asyncRequestWithInjectedSecurity(
-                request,
-                client::search,
-                // user is the one who started historical detector. Read AnomalyDetectorJobTransportAction.doExecute.
-                adTask.getUser(),
-                client,
-                AnalysisType.AD, // only meant for AD
-                searchResponseListener
-            );
+        }, internalListener::onFailure));
     }
 
     /**

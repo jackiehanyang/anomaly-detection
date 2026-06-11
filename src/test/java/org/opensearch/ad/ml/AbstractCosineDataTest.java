@@ -172,7 +172,8 @@ public class AbstractCosineDataTest extends AbstractTimeSeriesTest {
                 clock,
                 1,
                 1,
-                60_000L
+                60_000L,
+                null
             )
         );
 

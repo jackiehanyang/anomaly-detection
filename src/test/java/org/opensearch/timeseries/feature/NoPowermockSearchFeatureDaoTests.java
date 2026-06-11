@@ -189,7 +189,8 @@ public class NoPowermockSearchFeatureDaoTests extends AbstractTimeSeriesTest {
             clock,
             1,
             1,
-            60_000L
+            60_000L,
+            null
         );
 
         String app0 = "app_0";
@@ -374,7 +375,8 @@ public class NoPowermockSearchFeatureDaoTests extends AbstractTimeSeriesTest {
             clock,
             2,
             1,
-            60_000L
+            60_000L,
+            null
         );
 
         searchFeatureDao.getHighestCountEntities(detector, 10L, 20L, listener);
@@ -418,7 +420,8 @@ public class NoPowermockSearchFeatureDaoTests extends AbstractTimeSeriesTest {
             clock,
             2,
             1,
-            timeoutMillis
+            timeoutMillis,
+            null
         );
 
         CountDownLatch clockInvoked = new CountDownLatch(2);

@@ -312,6 +312,8 @@ public class AnomalyCorrelationScenariosTests extends OpenSearchTestCase {
             null,
             null,
             null,
+            null,
+            null,
             null
         );
     }

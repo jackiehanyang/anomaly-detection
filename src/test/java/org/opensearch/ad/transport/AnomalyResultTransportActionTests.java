@@ -234,6 +234,8 @@ public class AnomalyResultTransportActionTests extends ADIntegTestCase {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
     }
@@ -272,6 +274,8 @@ public class AnomalyResultTransportActionTests extends ADIntegTestCase {
             null,
             Instant.now(),
             interval,
+            null,
+            null,
             null
         );
     }

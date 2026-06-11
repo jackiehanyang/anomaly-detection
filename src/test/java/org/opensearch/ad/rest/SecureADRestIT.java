@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.hc.core5.http.ContentType;
-import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.io.entity.StringEntity;
@@ -42,6 +41,7 @@ import org.opensearch.ad.AnomalyDetectorRestTestCase;
 import org.opensearch.ad.constant.ADCommonName;
 import org.opensearch.ad.model.AnomalyDetector;
 import org.opensearch.ad.model.AnomalyDetectorExecutionInput;
+import org.opensearch.ad.model.AnomalyResult;
 import org.opensearch.client.Response;
 import org.opensearch.client.ResponseException;
 import org.opensearch.client.RestClient;
@@ -77,6 +77,7 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
     private static final String READ_ONLY_AG = "ad_read_only";
     private static final String READ_WRITE_AG = "ad_read_write";
     private static final String FULL_ACCESS_AG = "ad_full_access";
+    private static final String PPL_ACCESS_ROLE = "ppl_access";
 
     String oceanUser = "ocean";
     RestClient oceanClient;
@@ -91,6 +92,7 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         createIndexRole(indexAllAccessRole, "*");
         String indexSearchAccessRole = "index_all_search";
         createSearchRole(indexSearchAccessRole, "*");
+        createPPLAccessRole(PPL_ACCESS_ROLE);
         String alicePassword = generatePassword(aliceUser);
         createUser(aliceUser, alicePassword, new ArrayList<>(Arrays.asList("odfe")));
         aliceClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[0]), isHttps(), aliceUser, alicePassword)
@@ -149,6 +151,7 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         createRoleMapping("anomaly_full_access", new ArrayList<>(Arrays.asList(aliceUser, catUser, dogUser, elkUser, fishUser, goatUser)));
         createRoleMapping(indexAllAccessRole, new ArrayList<>(Arrays.asList(aliceUser, bobUser, catUser, dogUser, fishUser, lionUser)));
         createRoleMapping(indexSearchAccessRole, new ArrayList<>(Arrays.asList(goatUser)));
+        createRoleMapping(PPL_ACCESS_ROLE, new ArrayList<>(Arrays.asList(aliceUser, catUser, goatUser)));
     }
 
     @After
@@ -186,6 +189,93 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
         Map<String, Object> responseMap = entityAsMap(resp);
         ArrayList<String> roles = (ArrayList<String>) responseMap.get("roles");
         assertTrue(roles.contains("all_access"));
+    }
+
+    private String createInlinePPLPreviewIndex() throws IOException {
+        String indexName = "secure-ppl-preview-" + System.nanoTime();
+        TestHelpers
+            .makeRequest(
+                client(),
+                "PUT",
+                "/" + indexName,
+                ImmutableMap.of(),
+                TestHelpers
+                    .toHttpEntity(
+                        "{\"mappings\":{\"properties\":{\"timestamp\":{\"type\":\"date\"},\"status_code\":{\"type\":\"integer\"},\"metric_a\":{\"type\":\"double\"},\"metric_b\":{\"type\":\"double\"},\"service\":{\"type\":\"keyword\"}}}}"
+                    ),
+                null
+            );
+
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+        for (int i = 0; i < 430; i++) {
+            Instant timestamp = now.minus(i, ChronoUnit.MINUTES);
+            int statusCode = i % 4 == 0 ? 500 : 200;
+            int metricA = (i % 5) + 1;
+            int metricB = (i % 7) + 10;
+            TestHelpers
+                .ingestDataToIndex(
+                    client(),
+                    indexName,
+                    TestHelpers
+                        .toHttpEntity(
+                            String
+                                .format(
+                                    Locale.ROOT,
+                                    "{\"timestamp\":%d,\"status_code\":%d,\"metric_a\":%d,\"metric_b\":%d,\"service\":\"checkout\"}",
+                                    timestamp.toEpochMilli(),
+                                    statusCode,
+                                    metricA,
+                                    metricB
+                                )
+                        )
+                );
+        }
+
+        return indexName;
+    }
+
+    private void createClusterRole(String role, List<String> clusterPermissions) throws IOException {
+        StringBuilder permissions = new StringBuilder();
+        for (int i = 0; i < clusterPermissions.size(); i++) {
+            if (i > 0) {
+                permissions.append(",\n");
+            }
+            permissions.append("\"").append(clusterPermissions.get(i)).append("\"");
+        }
+        TestHelpers
+            .makeRequest(
+                client(),
+                "PUT",
+                "/_opendistro/_security/api/roles/" + role,
+                null,
+                TestHelpers
+                    .toHttpEntity(
+                        "{\n"
+                            + "\"cluster_permissions\": [\n"
+                            + permissions
+                            + "\n"
+                            + "],\n"
+                            + "\"index_permissions\": [],\n"
+                            + "\"tenant_permissions\": []\n"
+                            + "}"
+                    ),
+                ImmutableList.of(new BasicHeader(HttpHeaders.USER_AGENT, "Kibana"))
+            );
+    }
+
+    private void createPPLAccessRole(String role) throws IOException {
+        createClusterRole(role, Arrays.asList("cluster:admin/opensearch/ppl"));
+    }
+
+    private String buildInlinePPLPreviewBody(String indexName, Instant periodStart, Instant periodEnd) {
+        return String
+            .format(
+                Locale.ROOT,
+                "{\"period_start\":%d,\"period_end\":%d,\"detector\":{\"name\":\"secure-preview-ppl\",\"source_type\":\"PPL\",\"ppl_source\":{\"query_language\":\"PPL\",\"query\":\"source = %s | where service = 'checkout' | eval total_metric = metric_a + metric_b | stats count(*) as doc_count, avg(total_metric) as avg_total_metric by span(timestamp, 1m) as bucket\"},\"window_delay\":{\"period\":{\"interval\":1,\"unit\":\"Minutes\"}}}}",
+                periodStart.toEpochMilli(),
+                periodEnd.toEpochMilli(),
+                indexName
+            );
     }
 
     public void testCreateAnomalyDetector() throws IOException {
@@ -619,6 +709,8 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
             null,
             Instant.now(),
             aliceDetector.getFrequency(),
+            null,
+            null,
             null
         );
 
@@ -951,6 +1043,86 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
 
     }
 
+    @SuppressWarnings("unchecked")
+    public void testPreviewInlinePPLAnomalyDetector() throws IOException {
+        String indexName = createInlinePPLPreviewIndex();
+        Instant periodEnd = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+        Instant periodStart = periodEnd.minus(410, ChronoUnit.MINUTES);
+        String requestBody = buildInlinePPLPreviewBody(indexName, periodStart, periodEnd);
+
+        Response response = previewAnomalyDetector(aliceClient, requestBody);
+        Assert.assertEquals(RestStatus.OK, TestHelpers.restStatus(response));
+        Map<String, Object> responseMap = entityAsMap(response);
+        List<Map<String, Object>> anomalyResults = (List<Map<String, Object>>) responseMap.get("anomaly_result");
+        Assert.assertNotNull(anomalyResults);
+        Assert.assertFalse(anomalyResults.isEmpty());
+
+        List<Map<String, Object>> featureData = (List<Map<String, Object>>) anomalyResults.get(0).get("feature_data");
+        Assert.assertEquals(2, featureData.size());
+        Assert.assertEquals("doc_count", featureData.get(0).get("feature_name"));
+        Assert.assertEquals("avg_total_metric", featureData.get(1).get("feature_name"));
+
+        Response catResponse = previewAnomalyDetector(catClient, requestBody);
+        Assert.assertEquals(RestStatus.OK, TestHelpers.restStatus(catResponse));
+
+        Response goatResponse = previewAnomalyDetector(goatClient, requestBody);
+        Assert.assertEquals(RestStatus.OK, TestHelpers.restStatus(goatResponse));
+
+        String noPermsMessage = "no permissions for [cluster:admin/opendistro/ad/detector/preview]";
+        Exception exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(bobClient, requestBody); });
+        Assert.assertTrue(exception.getMessage().contains(noPermsMessage));
+
+        String noPPLUser = "no_ppl_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        String noPPLPassword = generatePassword(noPPLUser);
+        createUser(noPPLUser, noPPLPassword, new ArrayList<>());
+        RestClient noPPLClient = new SecureRestClientBuilder(
+            getClusterHosts().toArray(new HttpHost[0]),
+            isHttps(),
+            noPPLUser,
+            noPPLPassword
+        ).setSocketTimeout(60000).build();
+        String adPreviewWithoutPPLRole = "ad_preview_without_ppl_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        String noPPLSourceReadRole = "ad_preview_without_ppl_source_read_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        createClusterRole(adPreviewWithoutPPLRole, Arrays.asList("cluster:admin/opendistro/ad/detector/preview"));
+        createSearchRole(noPPLSourceReadRole, indexName);
+        createRoleMapping(adPreviewWithoutPPLRole, new ArrayList<>(Arrays.asList(noPPLUser)));
+        createRoleMapping(noPPLSourceReadRole, new ArrayList<>(Arrays.asList(noPPLUser)));
+        try {
+            exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(noPPLClient, requestBody); });
+            Assert.assertTrue(exception.getMessage().contains("no permissions for [cluster:admin/opensearch/ppl]"));
+        } finally {
+            noPPLClient.close();
+            deleteUser(noPPLUser);
+            deleteRoleMapping(adPreviewWithoutPPLRole);
+            deleteRoleMapping(noPPLSourceReadRole);
+        }
+
+        String noSourceReadUser = "no_source_read_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        String noSourceReadPassword = generatePassword(noSourceReadUser);
+        createUser(noSourceReadUser, noSourceReadPassword, new ArrayList<>());
+        RestClient noSourceReadClient = new SecureRestClientBuilder(
+            getClusterHosts().toArray(new HttpHost[0]),
+            isHttps(),
+            noSourceReadUser,
+            noSourceReadPassword
+        ).setSocketTimeout(60000).build();
+        String adPreviewWithPPLRole = "ad_preview_with_ppl_" + randomAlphaOfLength(8).toLowerCase(Locale.ROOT);
+        createClusterRole(
+            adPreviewWithPPLRole,
+            Arrays.asList("cluster:admin/opendistro/ad/detector/preview", "cluster:admin/opensearch/ppl")
+        );
+        createRoleMapping(adPreviewWithPPLRole, new ArrayList<>(Arrays.asList(noSourceReadUser)));
+        try {
+            exception = expectThrows(IOException.class, () -> { previewAnomalyDetector(noSourceReadClient, requestBody); });
+            Assert.assertTrue(exception.getMessage().contains("no permissions for [indices:data/read/search]"));
+        } finally {
+            noSourceReadClient.close();
+            deleteUser(noSourceReadUser);
+            deleteRoleMapping(adPreviewWithPPLRole);
+        }
+
+    }
+
     public void testValidateAnomalyDetector() throws IOException {
         // User Alice has AD full access, should be able to validate a detector
         AnomalyDetector aliceDetector = createRandomAnomalyDetector(false, false, aliceClient);
@@ -1136,56 +1308,61 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
             AnomalyDetector aliceDetector = createAnomalyDetector(cloneDetector(baseDetector, customResultIndex), true, aliceClient);
             assertEquals(customResultIndex, aliceDetector.getCustomResultIndexOrAlias());
 
-            String startDetectorEndpoint = String.format(Locale.ROOT, TestHelpers.AD_BASE_START_DETECTOR_URL, aliceDetector.getId());
-            Response startDetectorResp = TestHelpers
-                .makeRequest(aliceClient, "POST", startDetectorEndpoint, ImmutableMap.of(), (HttpEntity) null, null);
-            assertEquals("Start detector failed", RestStatus.OK, TestHelpers.restStatus(startDetectorResp));
+            // Seed deterministic anomaly results directly. This test verifies Insights security/system-index behavior; relying on
+            // realtime detector execution to produce anomalies makes the test timing-sensitive in CI.
+            Instant anomalyStart = Instant.now().minus(10, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MILLIS);
+            Instant anomalyEnd = anomalyStart.plus(1, ChronoUnit.MINUTES);
+            AnomalyResult anomalyResult1 = TestHelpers
+                .randomHCADAnomalyDetectResult(
+                    aliceDetector.getId(),
+                    null,
+                    null,
+                    0.8,
+                    0.9,
+                    null,
+                    anomalyStart.toEpochMilli(),
+                    anomalyEnd.toEpochMilli()
+                );
+            AnomalyResult anomalyResult2 = TestHelpers
+                .randomHCADAnomalyDetectResult(
+                    aliceDetector.getId(),
+                    null,
+                    null,
+                    0.7,
+                    0.8,
+                    null,
+                    anomalyStart.toEpochMilli(),
+                    anomalyEnd.toEpochMilli()
+                );
+            TestHelpers.ingestDataToIndex(client(), customResultIndex, TestHelpers.toHttpEntity(anomalyResult1));
+            TestHelpers.ingestDataToIndex(client(), customResultIndex, TestHelpers.toHttpEntity(anomalyResult2));
 
-            // Wait briefly for anomaly results to appear in the custom result index.
-            // Insights correlation uses includeSingleton=false, so we want at least 2 anomalies to reduce flakiness.
-            boolean anomaliesAvailable = false;
-            int maxRetries = 30;
-            int retryIntervalMs = 2000;
-            for (int attempt = 0; attempt < maxRetries; attempt++) {
-                Response searchResultsResp = TestHelpers
-                    .makeRequest(
-                        aliceClient,
-                        "POST",
-                        "/" + customResultIndex + "*/_search",
-                        ImmutableMap.of(),
-                        new StringEntity(
-                            "{\"size\":0,\"track_total_hits\":true,\"query\":{\"match_all\":{}}}",
-                            ContentType.APPLICATION_JSON
-                        ),
-                        null
-                    );
-                Map<String, Object> searchResults = entityAsMap(searchResultsResp);
-                @SuppressWarnings("unchecked")
-                Map<String, Object> hitsObj = (Map<String, Object>) searchResults.get("hits");
-                Object totalObj = hitsObj == null ? null : hitsObj.get("total");
-                long totalHits = 0;
-                if (totalObj instanceof Number) {
-                    totalHits = ((Number) totalObj).longValue();
-                } else if (totalObj instanceof Map) {
-                    Object value = ((Map<String, Object>) totalObj).get("value");
-                    if (value instanceof Number) {
-                        totalHits = ((Number) value).longValue();
-                    }
-                }
-                if (totalHits >= 2) {
-                    anomaliesAvailable = true;
-                    break;
-                }
-                try {
-                    Thread.sleep(retryIntervalMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+            Response searchResultsResp = TestHelpers
+                .makeRequest(
+                    aliceClient,
+                    "POST",
+                    "/" + customResultIndex + "*/_search",
+                    ImmutableMap.of(),
+                    new StringEntity("{\"size\":0,\"track_total_hits\":true,\"query\":{\"match_all\":{}}}", ContentType.APPLICATION_JSON),
+                    null
+                );
+            Map<String, Object> searchResults = entityAsMap(searchResultsResp);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> hitsObj = (Map<String, Object>) searchResults.get("hits");
+            Object totalObj = hitsObj == null ? null : hitsObj.get("total");
+            long totalHits = 0;
+            if (totalObj instanceof Number) {
+                totalHits = ((Number) totalObj).longValue();
+            } else if (totalObj instanceof Map) {
+                Object value = ((Map<String, Object>) totalObj).get("value");
+                if (value instanceof Number) {
+                    totalHits = ((Number) value).longValue();
                 }
             }
-            assertTrue("Expected at least 2 anomaly results to be generated before starting insights", anomaliesAvailable);
+            assertTrue("Expected at least 2 seeded anomaly results before starting insights", totalHits >= 2);
 
             // 2) Start insights job as alice
+            int retryIntervalMs = 2000;
             Response startResp = TestHelpers.makeRequest(aliceClient, "POST", startPath, ImmutableMap.of(), "", null);
             assertEquals("Start insights job failed", RestStatus.OK, TestHelpers.restStatus(startResp));
 
