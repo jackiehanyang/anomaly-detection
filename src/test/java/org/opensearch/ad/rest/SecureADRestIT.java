@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.hc.core5.http.ContentType;
-import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.io.entity.StringEntity;
@@ -42,6 +41,7 @@ import org.opensearch.ad.AnomalyDetectorRestTestCase;
 import org.opensearch.ad.constant.ADCommonName;
 import org.opensearch.ad.model.AnomalyDetector;
 import org.opensearch.ad.model.AnomalyDetectorExecutionInput;
+import org.opensearch.ad.model.AnomalyResult;
 import org.opensearch.client.Response;
 import org.opensearch.client.ResponseException;
 import org.opensearch.client.RestClient;
@@ -1274,56 +1274,61 @@ public class SecureADRestIT extends AnomalyDetectorRestTestCase {
             AnomalyDetector aliceDetector = createAnomalyDetector(cloneDetector(baseDetector, customResultIndex), true, aliceClient);
             assertEquals(customResultIndex, aliceDetector.getCustomResultIndexOrAlias());
 
-            String startDetectorEndpoint = String.format(Locale.ROOT, TestHelpers.AD_BASE_START_DETECTOR_URL, aliceDetector.getId());
-            Response startDetectorResp = TestHelpers
-                .makeRequest(aliceClient, "POST", startDetectorEndpoint, ImmutableMap.of(), (HttpEntity) null, null);
-            assertEquals("Start detector failed", RestStatus.OK, TestHelpers.restStatus(startDetectorResp));
+            // Seed deterministic anomaly results directly. This test verifies Insights security/system-index behavior; relying on
+            // realtime detector execution to produce anomalies makes the test timing-sensitive in CI.
+            Instant anomalyStart = Instant.now().minus(10, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MILLIS);
+            Instant anomalyEnd = anomalyStart.plus(1, ChronoUnit.MINUTES);
+            AnomalyResult anomalyResult1 = TestHelpers
+                .randomHCADAnomalyDetectResult(
+                    aliceDetector.getId(),
+                    null,
+                    null,
+                    0.8,
+                    0.9,
+                    null,
+                    anomalyStart.toEpochMilli(),
+                    anomalyEnd.toEpochMilli()
+                );
+            AnomalyResult anomalyResult2 = TestHelpers
+                .randomHCADAnomalyDetectResult(
+                    aliceDetector.getId(),
+                    null,
+                    null,
+                    0.7,
+                    0.8,
+                    null,
+                    anomalyStart.toEpochMilli(),
+                    anomalyEnd.toEpochMilli()
+                );
+            TestHelpers.ingestDataToIndex(client(), customResultIndex, TestHelpers.toHttpEntity(anomalyResult1));
+            TestHelpers.ingestDataToIndex(client(), customResultIndex, TestHelpers.toHttpEntity(anomalyResult2));
 
-            // Wait briefly for anomaly results to appear in the custom result index.
-            // Insights correlation uses includeSingleton=false, so we want at least 2 anomalies to reduce flakiness.
-            boolean anomaliesAvailable = false;
-            int maxRetries = 30;
-            int retryIntervalMs = 2000;
-            for (int attempt = 0; attempt < maxRetries; attempt++) {
-                Response searchResultsResp = TestHelpers
-                    .makeRequest(
-                        aliceClient,
-                        "POST",
-                        "/" + customResultIndex + "*/_search",
-                        ImmutableMap.of(),
-                        new StringEntity(
-                            "{\"size\":0,\"track_total_hits\":true,\"query\":{\"match_all\":{}}}",
-                            ContentType.APPLICATION_JSON
-                        ),
-                        null
-                    );
-                Map<String, Object> searchResults = entityAsMap(searchResultsResp);
-                @SuppressWarnings("unchecked")
-                Map<String, Object> hitsObj = (Map<String, Object>) searchResults.get("hits");
-                Object totalObj = hitsObj == null ? null : hitsObj.get("total");
-                long totalHits = 0;
-                if (totalObj instanceof Number) {
-                    totalHits = ((Number) totalObj).longValue();
-                } else if (totalObj instanceof Map) {
-                    Object value = ((Map<String, Object>) totalObj).get("value");
-                    if (value instanceof Number) {
-                        totalHits = ((Number) value).longValue();
-                    }
-                }
-                if (totalHits >= 2) {
-                    anomaliesAvailable = true;
-                    break;
-                }
-                try {
-                    Thread.sleep(retryIntervalMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+            Response searchResultsResp = TestHelpers
+                .makeRequest(
+                    aliceClient,
+                    "POST",
+                    "/" + customResultIndex + "*/_search",
+                    ImmutableMap.of(),
+                    new StringEntity("{\"size\":0,\"track_total_hits\":true,\"query\":{\"match_all\":{}}}", ContentType.APPLICATION_JSON),
+                    null
+                );
+            Map<String, Object> searchResults = entityAsMap(searchResultsResp);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> hitsObj = (Map<String, Object>) searchResults.get("hits");
+            Object totalObj = hitsObj == null ? null : hitsObj.get("total");
+            long totalHits = 0;
+            if (totalObj instanceof Number) {
+                totalHits = ((Number) totalObj).longValue();
+            } else if (totalObj instanceof Map) {
+                Object value = ((Map<String, Object>) totalObj).get("value");
+                if (value instanceof Number) {
+                    totalHits = ((Number) value).longValue();
                 }
             }
-            assertTrue("Expected at least 2 anomaly results to be generated before starting insights", anomaliesAvailable);
+            assertTrue("Expected at least 2 seeded anomaly results before starting insights", totalHits >= 2);
 
             // 2) Start insights job as alice
+            int retryIntervalMs = 2000;
             Response startResp = TestHelpers.makeRequest(aliceClient, "POST", startPath, ImmutableMap.of(), "", null);
             assertEquals("Start insights job failed", RestStatus.OK, TestHelpers.restStatus(startResp));
 
